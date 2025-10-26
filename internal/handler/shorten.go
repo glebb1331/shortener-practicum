@@ -6,13 +6,15 @@ import (
 	"strings"
 )
 
+var urlStore = make(map[string]string)
+
 func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if ct := r.Header.Get("Content-Type"); ct != "text/plain" {
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -22,6 +24,7 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	defer r.Body.Close()
 
 	url := strings.TrimSpace(string(body))
 	if url == "" {
@@ -29,7 +32,10 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortURL := "http://localhost:8080/EwHXdJfB"
+	id := "id1"
+	urlStore[id] = url
+
+	shortURL := "http://localhost:8080/" + id
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
