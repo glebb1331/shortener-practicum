@@ -16,8 +16,13 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	originalURL := "https://practicum.yandex.ru/"
 
-	w.Header().Set("Location", originalURL)
+	url, ok := urlStore[id]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Location", url)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
