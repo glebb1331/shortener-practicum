@@ -59,6 +59,8 @@ func TestRedirectHandler(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, nil)
 			w := httptest.NewRecorder()
 
+			BaseURL = "http://localhost:8080"
+
 			RedirectHandler(w, req)
 
 			res := w.Result()

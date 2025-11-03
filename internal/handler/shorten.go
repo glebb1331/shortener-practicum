@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+var BaseURL string
+
 var urlStore = make(map[string]string)
 
 func ShortenHandler(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +37,7 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	id := "id1"
 	urlStore[id] = url
 
-	shortURL := "http://localhost:8080/" + id
+	shortURL := BaseURL + "/" + id
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
