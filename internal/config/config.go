@@ -8,12 +8,11 @@ type Config struct {
 }
 
 func NewConfig() *Config {
-	config := &Config{}
+	cfg := &Config{}
 
-	flag.StringVar(&config.ServerAddress, "a", "localhost:8080", "server address")
-	flag.StringVar(&config.BaseURL, "b", "http://localhost:8080", "base url")
+	flag.StringVar(&cfg.ServerAddress, "a", ":8080", "server address")
+	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "base url")
 
 	flag.Parse()
-
-	return config
+	return cfg
 }

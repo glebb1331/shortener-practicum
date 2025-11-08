@@ -12,14 +12,14 @@ import (
 func main() {
 	cfg := config.NewConfig()
 
-	handler.BaseURL = cfg.BaseURL
-
 	r := chi.NewRouter()
 
-	r.Post("/", handler.ShortenHandler)
+	h := handler.NewHandler(cfg.BaseURL)
 
-	r.Get("/{id}", handler.RedirectHandler)
+	r.Post("/", h.ShortenHandler)
 
-	log.Println("Сервер запущен")
+	r.Get("/{id}", h.RedirectHandler)
+
+	log.Println("Сервер запущен", cfg.ServerAddress)
 	log.Fatal(http.ListenAndServe(cfg.ServerAddress, r))
 }
