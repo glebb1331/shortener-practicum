@@ -1,6 +1,9 @@
 package config
 
-import "flag"
+import (
+	"flag"
+	"os"
+)
 
 type Config struct {
 	ServerAddress string
@@ -10,9 +13,22 @@ type Config struct {
 func NewConfig() *Config {
 	cfg := &Config{}
 
-	flag.StringVar(&cfg.ServerAddress, "a", ":8080", "server address")
-	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "base url")
+	defaultServerAddress := ":8080"
+	defaultBaseURL := "http://localhost:8080"
+
+	// Определяем флаги
+	flag.StringVar(&cfg.ServerAddress, "a", defaultServerAddress, "server address")
+	flag.StringVar(&cfg.BaseURL, "b", defaultBaseURL, "base url")
 
 	flag.Parse()
+
+	if envServerAddress := os.Getenv("SERVER_ADDRESS"); envServerAddress != "" {
+		cfg.ServerAddress = envServerAddress
+	}
+
+	if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
+		cfg.BaseURL = envBaseURL
+	}
+
 	return cfg
 }
