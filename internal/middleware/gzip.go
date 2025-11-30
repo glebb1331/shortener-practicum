@@ -18,7 +18,6 @@ func (w *gzipWriter) Write(b []byte) (int, error) {
 
 func WithGzip(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Обработка входящего gzip-сжатого запроса
 		if r.Header.Get("Content-Encoding") == "gzip" {
 			gz, err := gzip.NewReader(r.Body)
 			if err != nil {
@@ -29,13 +28,11 @@ func WithGzip(h http.Handler) http.Handler {
 			r.Body = gz
 		}
 
-		// Проверка, поддерживает ли клиент gzip
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			h.ServeHTTP(w, r)
 			return
 		}
 
-		// Создаем обёртку для перехвата Content-Type
 		crw := &compressResponseWriter{
 			ResponseWriter: w,
 		}
@@ -45,7 +42,6 @@ func WithGzip(h http.Handler) http.Handler {
 	})
 }
 
-// compressResponseWriter перехватывает запись для сжатия
 type compressResponseWriter struct {
 	http.ResponseWriter
 	gzWriter      *gzip.Writer
@@ -58,7 +54,6 @@ func (c *compressResponseWriter) WriteHeader(statusCode int) {
 	}
 	c.headerWritten = true
 
-	// Проверяем Content-Type перед записью заголовков
 	contentType := c.Header().Get("Content-Type")
 	shouldCompress := strings.Contains(contentType, "application/json") ||
 		strings.Contains(contentType, "text/html")
@@ -83,7 +78,6 @@ func (c *compressResponseWriter) Write(b []byte) (int, error) {
 	return c.ResponseWriter.Write(b)
 }
 
-// Close закрывает gzip writer если он был создан
 func (c *compressResponseWriter) Close() error {
 	if c.gzWriter != nil {
 		return c.gzWriter.Close()

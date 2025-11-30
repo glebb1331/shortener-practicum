@@ -17,7 +17,7 @@ import (
 )
 
 func setupRouter() (*chi.Mux, *Handler) {
-	h := NewHandler("http://localhost:8080")
+	h := NewHandler("http://localhost:8080", "")
 	r := chi.NewRouter()
 	r.Post("/", h.ShortenHandler)
 	r.Post("/api/shorten", h.APIShortenHandler)
@@ -27,7 +27,7 @@ func setupRouter() (*chi.Mux, *Handler) {
 
 func TestShortenHandler(t *testing.T) {
 
-	h := NewHandler("http://localhost:8080")
+	h := NewHandler("http://localhost:8080", "")
 
 	r := chi.NewRouter()
 	r.Post("/", h.ShortenHandler)
@@ -120,13 +120,13 @@ func TestShortenHandler(t *testing.T) {
 }
 
 func TestAPIShortenHandler_WithGzip(t *testing.T) {
-	h := NewHandler("http://localhost:8080")
+	h := NewHandler("http://localhost:8080", "")
 	r := chi.NewRouter()
 	r.Use(middleware.WithGzip)
 	r.Post("/api/shorten", h.APIShortenHandler)
 
 	t.Run("gzip compressed request", func(t *testing.T) {
-		// Создаем gzip-сжатый запрос
+
 		jsonBody := `{"url":"https://practicum.yandex.ru"}`
 		var buf bytes.Buffer
 		gzWriter := gzip.NewWriter(&buf)
@@ -148,7 +148,6 @@ func TestAPIShortenHandler_WithGzip(t *testing.T) {
 		assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
 		assert.Equal(t, "application/json", res.Header.Get("Content-Type"))
 
-		// Декомпрессируем ответ
 		gz, err := gzip.NewReader(res.Body)
 		require.NoError(t, err)
 		defer gz.Close()
@@ -176,7 +175,6 @@ func TestAPIShortenHandler_WithGzip(t *testing.T) {
 		assert.Equal(t, http.StatusCreated, res.StatusCode)
 		assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
 
-		// Декомпрессируем ответ
 		gz, err := gzip.NewReader(res.Body)
 		require.NoError(t, err)
 		defer gz.Close()

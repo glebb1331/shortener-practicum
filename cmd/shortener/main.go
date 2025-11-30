@@ -21,11 +21,10 @@ func main() {
 
 	r := chi.NewRouter()
 
-	// Добавляем middleware для логирования и gzip
 	r.Use(middleware.WithLogging)
 	r.Use(middleware.WithGzip)
 
-	h := handler.NewHandler(cfg.BaseURL)
+	h := handler.NewHandler(cfg.BaseURL, cfg.FileStoragePath)
 
 	r.Post("/", h.ShortenHandler)
 	r.Post("/api/shorten", h.APIShortenHandler)

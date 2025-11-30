@@ -12,11 +12,13 @@ type Handler struct {
 	store   *URLStore
 }
 
-func NewHandler(baseURL string) *Handler {
-	return &Handler{
+func NewHandler(baseURL string, fileStoragePath string) *Handler {
+	h := &Handler{
 		BaseURL: baseURL,
-		store:   NewURLStore(),
+		store:   NewURLStore(fileStoragePath),
 	}
+	h.store.LoadFromFile()
+	return h
 }
 
 func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {

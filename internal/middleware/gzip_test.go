@@ -47,7 +47,6 @@ func TestWithGzip_Compression(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Создаем handler с нужным Content-Type
 			testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", tt.contentType)
 				w.WriteHeader(http.StatusOK)
@@ -70,7 +69,6 @@ func TestWithGzip_Compression(t *testing.T) {
 			if tt.expectGzip {
 				assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
 
-				// Проверяем что данные действительно сжаты
 				gz, err := gzip.NewReader(res.Body)
 				require.NoError(t, err)
 				defer gz.Close()
@@ -100,7 +98,6 @@ func TestWithGzip_Decompression(t *testing.T) {
 
 	middlewareHandler := WithGzip(handler)
 
-	// Создаем gzip-сжатое тело запроса
 	originalBody := `{"url":"https://practicum.yandex.ru"}`
 	var buf bytes.Buffer
 	gzWriter := gzip.NewWriter(&buf)
@@ -124,7 +121,6 @@ func TestWithGzip_InvalidGzipData(t *testing.T) {
 
 	middlewareHandler := WithGzip(handler)
 
-	// Отправляем невалидные gzip данные
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString("invalid gzip data"))
 	req.Header.Set("Content-Encoding", "gzip")
 
