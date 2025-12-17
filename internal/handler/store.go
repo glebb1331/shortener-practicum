@@ -20,16 +20,18 @@ type URLRecord struct {
 type URLStore struct {
 	mu              sync.RWMutex
 	urls            map[string]string
-	uuidCounter     int
 	fileStoragePath string
 }
 
-func NewURLStore(fileStoragePath string) *URLStore {
-	return &URLStore{
-		urls:            make(map[string]string),
-		uuidCounter:     0,
-		fileStoragePath: fileStoragePath,
+func NewURLStore(fileStoragePath string) (*URLStore, error) {
+	s := &URLStore{
+		urls: make(map[string]string),
 	}
+
+	if err := s.LoadFromFile(); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 func generatedID() string {
@@ -44,9 +46,10 @@ func generatedID() string {
 func (s *URLStore) Save(original string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	id := generatedID()
 	s.urls[id] = original
-	s.uuidCounter++
+
 	s.saveToFile()
 	return id
 }
@@ -54,13 +57,12 @@ func (s *URLStore) Save(original string) string {
 func (s *URLStore) Get(id string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	url, ok := s.urls[id]
 	return url, ok
 }
 
 func (s *URLStore) LoadFromFile() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.fileStoragePath == "" {
 		return nil
@@ -74,21 +76,7 @@ func (s *URLStore) LoadFromFile() error {
 		return err
 	}
 
-	var records []URLRecord
-	if err := json.Unmarshal(data, &records); err != nil {
-		return err
-	}
-
-	maxUUID := 0
-	for _, record := range records {
-		s.urls[record.ShortURL] = record.OriginalURL
-		if uuid, err := strconv.Atoi(record.UUID); err == nil && uuid > maxUUID {
-			maxUUID = uuid
-		}
-	}
-	s.uuidCounter = maxUUID
-
-	return nil
+	return json.Unmarshal(data, &s.urls)
 }
 
 func (s *URLStore) saveToFile() error {

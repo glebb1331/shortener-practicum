@@ -17,7 +17,7 @@ func main() {
 	}
 	defer logger.Log.Sync()
 
-	cfg := config.NewConfig()
+	cfg, _ := config.NewConfig()
 
 	r := chi.NewRouter()
 

@@ -2,39 +2,28 @@ package config
 
 import (
 	"flag"
-	"os"
+
+	"github.com/ilyakaznacheev/cleanenv"
 )
 
 type Config struct {
-	ServerAddress   string
-	BaseURL         string
-	FileStoragePath string
+	ServerAddress   string `env:"SERVER_ADDRESS" envDefault:"localhost:8080"`
+	BaseURL         string `env:"BASE_URL" envDefault:"http://localhost:8080"`
+	FileStoragePath string `env:"FILE_STORAGE_PATH" envDefault:"C:\\tmp\\short-url-db.json"`
 }
 
-func NewConfig() *Config {
+func NewConfig() (*Config, error) {
 	cfg := &Config{}
 
-	defaultServerAddress := ":8080"
-	defaultBaseURL := "http://localhost:8080"
-	defaultFileStoragePath := "C:\\tmp\\short-url-db.json"
+	if err := cleanenv.ReadEnv(cfg); err != nil {
+		return nil, err
+	}
 
-	flag.StringVar(&cfg.ServerAddress, "a", defaultServerAddress, "server address")
-	flag.StringVar(&cfg.BaseURL, "b", defaultBaseURL, "base url")
-	flag.StringVar(&cfg.FileStoragePath, "f", defaultFileStoragePath, "file storage path")
+	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "server address")
+	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "base url")
+	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "file storage path")
 
 	flag.Parse()
 
-	if envServerAddress := os.Getenv("SERVER_ADDRESS"); envServerAddress != "" {
-		cfg.ServerAddress = envServerAddress
-	}
-
-	if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
-		cfg.BaseURL = envBaseURL
-	}
-
-	if envFileStoragePath := os.Getenv("FILE_STORAGE_PATH"); envFileStoragePath != "" {
-		cfg.FileStoragePath = envFileStoragePath
-	}
-
-	return cfg
+	return cfg, nil
 }
