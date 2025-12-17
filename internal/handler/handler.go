@@ -2,23 +2,27 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 )
 
 type Handler struct {
-	BaseURL string
-	store   *URLStore
+	service *URLService
 }
 
-func NewHandler(baseURL string, fileStoragePath string) *Handler {
-	h := &Handler{
-		BaseURL: baseURL,
-		store:   NewURLStore(fileStoragePath),
+func NewHandler(baseURL string, fileStoragePath string) (*Handler, error) {
+	store, err := NewURLStore(fileStoragePath)
+	if err != nil {
+		return nil, err
 	}
-	h.store.LoadFromFile()
-	return h
+
+	service := NewURLService(store, baseURL)
+
+	return &Handler{
+		service: service,
+	}, nil
 }
 
 func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
@@ -35,24 +39,25 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	url := strings.TrimSpace(string(body))
-	if url == "" {
-		w.WriteHeader(http.StatusBadRequest)
+	result, err := h.service.Shorten(string(body))
+	if err != nil {
+		if errors.Is(err, ErrEmptyURL) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	id := h.store.Save(url)
-	shortURL := h.BaseURL + "/" + id
-
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(shortURL))
+	w.Write([]byte(result))
 }
 
 func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/")
 
-	originalURL, ok := h.store.Get(id)
+	originalURL, ok := h.service.Resolve(id)
 	if !ok {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -75,22 +80,25 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer r.Body.Close()
+
 	var req ShortenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
 
-	if strings.TrimSpace(req.URL) == "" {
-		w.WriteHeader(http.StatusBadRequest)
+	result, err := h.service.Shorten(req.URL)
+	if err != nil {
+		if err == ErrEmptyURL {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	id := h.store.Save(req.URL)
-	shortURL := h.BaseURL + "/" + id
-
-	resp := ShortenResponse{Result: shortURL}
+	resp := ShortenResponse{Result: result}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

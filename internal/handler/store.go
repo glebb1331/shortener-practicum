@@ -43,15 +43,17 @@ func generatedID() string {
 	return string(b)
 }
 
-func (s *URLStore) Save(original string) string {
+func (s *URLStore) Save(original string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	id := generatedID()
 	s.urls[id] = original
 
-	s.saveToFile()
-	return id
+	if err := s.saveToFile(); err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 func (s *URLStore) Get(id string) (string, bool) {

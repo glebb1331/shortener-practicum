@@ -24,7 +24,10 @@ func main() {
 	r.Use(middleware.WithLogging)
 	r.Use(middleware.WithGzip)
 
-	h := handler.NewHandler(cfg.BaseURL, cfg.FileStoragePath)
+	h, err := handler.NewHandler(cfg.BaseURL, cfg.FileStoragePath)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	r.Post("/", h.ShortenHandler)
 	r.Post("/api/shorten", h.APIShortenHandler)

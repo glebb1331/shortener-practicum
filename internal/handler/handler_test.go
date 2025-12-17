@@ -17,7 +17,10 @@ import (
 )
 
 func setupRouter() (*chi.Mux, *Handler) {
-	h := NewHandler("http://localhost:8080", "")
+	h, err := NewHandler("http://localhost:8080", "")
+	if err != nil {
+		panic(err)
+	}
 	r := chi.NewRouter()
 	r.Post("/", h.ShortenHandler)
 	r.Post("/api/shorten", h.APIShortenHandler)
@@ -27,7 +30,8 @@ func setupRouter() (*chi.Mux, *Handler) {
 
 func TestShortenHandler(t *testing.T) {
 
-	h := NewHandler("http://localhost:8080", "")
+	h, err := NewHandler("http://localhost:8080", "")
+	require.NoError(t, err)
 
 	r := chi.NewRouter()
 	r.Post("/", h.ShortenHandler)
@@ -120,7 +124,9 @@ func TestShortenHandler(t *testing.T) {
 }
 
 func TestAPIShortenHandler_WithGzip(t *testing.T) {
-	h := NewHandler("http://localhost:8080", "")
+	h, err := NewHandler("http://localhost:8080", "")
+	require.NoError(t, err)
+
 	r := chi.NewRouter()
 	r.Use(middleware.WithGzip)
 	r.Post("/api/shorten", h.APIShortenHandler)
