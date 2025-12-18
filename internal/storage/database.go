@@ -50,3 +50,28 @@ func (s *DatabaseStorage) Close() error {
 func (s *DatabaseStorage) Ping(ctx context.Context) error {
 	return s.db.PingContext(ctx)
 }
+
+func (s *DatabaseStorage) BatchSave(ctx context.Context, records []struct {
+	ID          string
+	OriginalURL string
+}) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO urls (id, original_url) VALUES ($1, $2)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, record := range records {
+		if _, err := stmt.ExecContext(ctx, record.ID, record.OriginalURL); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}

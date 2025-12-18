@@ -9,4 +9,8 @@ type Storage interface {
 	Get(ctx context.Context, id string) (string, error)
 	Close() error
 	Ping(ctx context.Context) error
+	BatchSave(ctx context.Context, records []struct {
+		ID          string
+		OriginalURL string
+	}) error
 }

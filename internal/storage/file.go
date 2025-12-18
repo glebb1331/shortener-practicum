@@ -96,3 +96,17 @@ func (s *FileStorage) saveToFile() error {
 
 	return os.WriteFile(s.filePath, data, 0644)
 }
+
+func (s *FileStorage) BatchSave(ctx context.Context, records []struct {
+	ID          string
+	OriginalURL string
+}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, record := range records {
+		s.urls[record.ID] = record.OriginalURL
+	}
+
+	return s.saveToFile()
+}

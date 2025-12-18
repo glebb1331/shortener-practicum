@@ -45,3 +45,18 @@ func (s *MemoryStorage) Close() error {
 func (s *MemoryStorage) Ping(ctx context.Context) error {
 	return nil
 }
+
+func (s *MemoryStorage) BatchSave(ctx context.Context, records []struct {
+	ID          string
+	OriginalURL string
+}) error {
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, record := range records {
+		s.urls[record.ID] = record.OriginalURL
+	}
+
+	return nil
+}

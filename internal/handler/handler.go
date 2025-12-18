@@ -14,6 +14,18 @@ type Handler struct {
 	service *URLService
 }
 
+type BatchRequestItem struct {
+	CorrelationID string `json:"correlation_id"`
+	OriginalURL   string `json:"original_url"`
+}
+
+type BatchResponseItem struct {
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"original_url"`
+}
+
+type BatchResponse []BatchResponseItem
+
 func NewHandler(baseURL string, store storage.Storage) (*Handler, error) {
 	service := NewURLService(store, baseURL)
 
@@ -108,4 +120,38 @@ func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	defer r.Body.Close()
+
+	var batchRequests []BatchRequestItem
+	if err := json.NewDecoder(r.Body).Decode(&batchRequests); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if len(batchRequests) == 0 {
+		http.Error(w, "empty batch", http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.service.ShortenBatch(batchRequests)
+	if err != nil {
+		if errors.Is(err, ErrEmptyURL) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(result)
 }

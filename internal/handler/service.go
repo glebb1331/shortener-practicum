@@ -58,3 +58,56 @@ func generateID() string {
 	}
 	return string(b)
 }
+
+func (s *URLService) ShortenBatch(urls []BatchRequestItem) ([]BatchResponseItem, error) {
+	if len(urls) == 0 {
+		return nil, errors.New("empty urls")
+	}
+
+	records := make([]struct {
+		ID          string
+		OriginalURL string
+	}, len(urls))
+
+	response := make([]BatchResponseItem, len(urls))
+
+	for i, item := range urls {
+		if strings.TrimSpace(item.OriginalURL) == "" {
+			return nil, ErrEmptyURL
+		}
+
+		id := generateID()
+		records[i] = struct {
+			ID          string
+			OriginalURL string
+		}{
+			ID:          id,
+			OriginalURL: item.OriginalURL,
+		}
+
+		response[i] = BatchResponseItem{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      s.baseURL + "/" + id,
+		}
+	}
+
+	if batchStorage, ok := s.store.(interface {
+		BatchSave(ctx context.Context, records []struct {
+			ID          string
+			OriginalURL string
+		}) error
+	}); ok {
+		err := batchStorage.BatchSave(context.Background(), records)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		for _, record := range records {
+			if err := s.store.Save(context.Background(), record.ID, record.OriginalURL); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return response, nil
+}
