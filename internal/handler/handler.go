@@ -1,30 +1,24 @@
 package handler
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/glebb1331/shortener-practicum/internal/storage"
 )
 
 type Handler struct {
 	service *URLService
-	db      *sql.DB
 }
 
-func NewHandler(baseURL string, fileStoragePath string, db *sql.DB) (*Handler, error) {
-	store, err := NewURLStore(fileStoragePath)
-	if err != nil {
-		return nil, err
-	}
-
+func NewHandler(baseURL string, store storage.Storage) (*Handler, error) {
 	service := NewURLService(store, baseURL)
 
 	return &Handler{
 		service: service,
-		db:      db,
 	}, nil
 }
 
@@ -109,13 +103,8 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
-	if h.db == nil {
-		http.Error(w, "db not configured", http.StatusInternalServerError)
-		return
-	}
-
-	if err := h.db.PingContext(r.Context()); err != nil {
-		http.Error(w, "db unavailable", http.StatusInternalServerError)
+	if err := h.service.Ping(r.Context()); err != nil {
+		http.Error(w, "storage unavailable", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
