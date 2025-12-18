@@ -21,7 +21,7 @@ type BatchRequestItem struct {
 
 type BatchResponseItem struct {
 	CorrelationID string `json:"correlation_id"`
-	ShortURL      string `json:"original_url"`
+	ShortURL      string `json:"short_url"`
 }
 
 type BatchResponse []BatchResponseItem
