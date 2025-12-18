@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,9 +11,10 @@ import (
 
 type Handler struct {
 	service *URLService
+	db      *sql.DB
 }
 
-func NewHandler(baseURL string, fileStoragePath string) (*Handler, error) {
+func NewHandler(baseURL string, fileStoragePath string, db *sql.DB) (*Handler, error) {
 	store, err := NewURLStore(fileStoragePath)
 	if err != nil {
 		return nil, err
@@ -22,6 +24,7 @@ func NewHandler(baseURL string, fileStoragePath string) (*Handler, error) {
 
 	return &Handler{
 		service: service,
+		db:      db,
 	}, nil
 }
 
@@ -103,4 +106,17 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(resp)
+}
+
+func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		http.Error(w, "db not configured", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.db.PingContext(r.Context()); err != nil {
+		http.Error(w, "db unavailable", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }

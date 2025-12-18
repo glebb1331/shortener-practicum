@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/glebb1331/shortener-practicum/internal/logger"
 	"github.com/glebb1331/shortener-practicum/internal/middleware"
 	"github.com/go-chi/chi/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func main() {
@@ -17,17 +19,32 @@ func main() {
 	}
 	defer logger.Log.Sync()
 
-	cfg, _ := config.NewConfig()
+	cfg, err := config.NewConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var db *sql.DB
+
+	if cfg.DatabaseDSN != "" {
+		var err error
+		db, err = sql.Open("pgx", cfg.DatabaseDSN)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	r := chi.NewRouter()
 
 	r.Use(middleware.WithLogging)
 	r.Use(middleware.WithGzip)
 
-	h, err := handler.NewHandler(cfg.BaseURL, cfg.FileStoragePath)
+	h, err := handler.NewHandler(cfg.BaseURL, cfg.FileStoragePath, db)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	r.Get("/ping", h.PingHandler)
 
 	r.Post("/", h.ShortenHandler)
 	r.Post("/api/shorten", h.APIShortenHandler)

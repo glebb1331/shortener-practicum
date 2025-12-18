@@ -7,9 +7,10 @@ import (
 )
 
 type Config struct {
-	ServerAddress   string `env:"SERVER_ADDRESS" env-default:":8080"`
+	ServerAddress   string `env:"SERVER_ADDRESS" env-default:"localhost:8080"`
 	BaseURL         string `env:"BASE_URL" env-default:"http://localhost:8080"`
 	FileStoragePath string `env:"FILE_STORAGE_PATH" env-default:"C:\\tmp\\short-url-db.json"`
+	DatabaseDSN     string `env:"DATABASE_DSN"`
 }
 
 func NewConfig() (*Config, error) {
@@ -22,6 +23,7 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "server address")
 	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "base url")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "file storage path")
+	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database DSN")
 
 	flag.Parse()
 
