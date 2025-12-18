@@ -31,7 +31,17 @@ func (s *URLService) Shorten(url string) (string, error) {
 	}
 
 	id := generateID()
-	if err := s.store.Save(context.Background(), id, url); err != nil {
+	err := s.store.Save(context.Background(), id, url)
+	if err != nil {
+		if errors.Is(err, storage.ErrURLExists) {
+			if db, ok := s.store.(*storage.DatabaseStorage); ok {
+				existingID, err := db.GetByOriginalURL(context.Background(), url)
+				if err != nil {
+					return "", err
+				}
+				return s.baseURL + "/" + existingID, storage.ErrURLExists
+			}
+		}
 		return "", err
 	}
 

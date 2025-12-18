@@ -18,16 +18,27 @@ var migrations = []Migration{
 		Version: 1,
 		Name:    "create_urls_table",
 		Up: `
-			CREATE TABLE IF NOT EXISTS urls (
-				id TEXT PRIMARY KEY,
-				original_url TEXT NOT NULL,
-				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-			);
-			CREATE INDEX IF NOT EXISTS idx_urls_created_at ON urls(created_at);
-		`,
+            CREATE TABLE IF NOT EXISTS urls (
+                id TEXT PRIMARY KEY,
+                original_url TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_urls_created_at ON urls(created_at);
+        `,
 		Down: `
-			DROP TABLE IF EXISTS urls;
-		`,
+            DROP TABLE IF EXISTS urls;
+        `,
+	},
+	{
+		Version: 2,
+		Name:    "add_unique_original_url",
+		Up: `
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_urls_original_url_unique
+            ON urls(original_url);
+        `,
+		Down: `
+            DROP INDEX IF EXISTS idx_urls_original_url_unique;
+        `,
 	},
 }
 

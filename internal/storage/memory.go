@@ -2,11 +2,8 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"sync"
 )
-
-var ErrNotFound = errors.New("url not found")
 
 type MemoryStorage struct {
 	mu   sync.RWMutex

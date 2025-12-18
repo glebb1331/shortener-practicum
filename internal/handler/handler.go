@@ -54,6 +54,11 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if errors.Is(err, storage.ErrURLExists) {
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(result))
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -101,6 +106,12 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err == ErrEmptyURL {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, storage.ErrURLExists) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(ShortenResponse{Result: result})
 			return
 		}
 		http.Error(w, "internal error", http.StatusInternalServerError)

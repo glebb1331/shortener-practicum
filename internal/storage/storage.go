@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 )
 
 type Storage interface {
@@ -14,3 +15,8 @@ type Storage interface {
 		OriginalURL string
 	}) error
 }
+
+var (
+	ErrNotFound  = errors.New("url not found")
+	ErrURLExists = errors.New("url already exists")
+)
