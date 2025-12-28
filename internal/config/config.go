@@ -9,7 +9,7 @@ import (
 type Config struct {
 	ServerAddress   string `env:"SERVER_ADDRESS" env-default:"localhost:8080"`
 	BaseURL         string `env:"BASE_URL" env-default:"http://localhost:8080"`
-	FileStoragePath string `env:"FILE_STORAGE_PATH" env-default:"C:\\tmp\\short-url-db.json"`
+	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
 }
 

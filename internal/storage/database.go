@@ -6,8 +6,6 @@ import (
 	"errors"
 
 	"github.com/glebb1331/shortener-practicum/migrations"
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type DatabaseStorage struct {
@@ -24,17 +22,24 @@ func NewDatabaseStorage(db *sql.DB) (*DatabaseStorage, error) {
 	return s, nil
 }
 
-func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL string) error {
-	query := `INSERT INTO urls (id, original_url) VALUES ($1, $2)`
-	_, err := s.db.ExecContext(ctx, query, id, originalURL)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-			return ErrURLExists
-		}
-		return err
+func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL string) (string, error) {
+	query := `
+        INSERT INTO urls (id, original_url)
+        VALUES ($1, $2)
+        ON CONFLICT (original_url) DO NOTHING
+        RETURNING id
+    `
+
+	var storedID string
+	err := s.db.QueryRowContext(ctx, query, id, originalURL).Scan(&storedID)
+	if err == sql.ErrNoRows {
+		return "", ErrURLExists
 	}
-	return nil
+	if err != nil {
+		return "", err
+	}
+
+	return storedID, nil
 }
 
 func (s *DatabaseStorage) Get(ctx context.Context, id string) (string, error) {

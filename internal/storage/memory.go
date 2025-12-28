@@ -16,12 +16,18 @@ func NewMemoryStorage() *MemoryStorage {
 	}
 }
 
-func (s *MemoryStorage) Save(ctx context.Context, id, originalURL string) error {
+func (s *MemoryStorage) Save(ctx context.Context, id, originalURL string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	for existingID, url := range s.urls {
+		if url == originalURL {
+			return existingID, ErrURLExists
+		}
+	}
+
 	s.urls[id] = originalURL
-	return nil
+	return id, nil
 }
 
 func (s *MemoryStorage) Get(ctx context.Context, id string) (string, error) {
@@ -56,4 +62,16 @@ func (s *MemoryStorage) BatchSave(ctx context.Context, records []struct {
 	}
 
 	return nil
+}
+
+func (s *MemoryStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for id, url := range s.urls {
+		if url == originalURL {
+			return id, nil
+		}
+	}
+	return "", ErrNotFound
 }

@@ -6,8 +6,9 @@ import (
 )
 
 type Storage interface {
-	Save(ctx context.Context, id, originalURL string) error
+	Save(ctx context.Context, id, originalURL string) (string, error)
 	Get(ctx context.Context, id string) (string, error)
+	GetByOriginalURL(ctx context.Context, originalURL string) (string, error)
 	Close() error
 	Ping(ctx context.Context) error
 	BatchSave(ctx context.Context, records []struct {

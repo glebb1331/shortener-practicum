@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -25,6 +26,11 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 		filePath: filePath,
 	}
 
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
+	}
+
 	if err := s.loadFromFile(); err != nil {
 		return nil, err
 	}
@@ -32,12 +38,18 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 	return s, nil
 }
 
-func (s *FileStorage) Save(ctx context.Context, id, originalURL string) error {
+func (s *FileStorage) Save(ctx context.Context, id, originalURL string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	for existingID, url := range s.urls {
+		if url == originalURL {
+			return existingID, ErrURLExists
+		}
+	}
+
 	s.urls[id] = originalURL
-	return s.saveToFile()
+	return id, s.saveToFile()
 }
 
 func (s *FileStorage) Get(ctx context.Context, id string) (string, error) {
@@ -89,6 +101,14 @@ func (s *FileStorage) loadFromFile() error {
 }
 
 func (s *FileStorage) saveToFile() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	dir := filepath.Dir(s.filePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
 	data, err := json.MarshalIndent(s.urls, "", "  ")
 	if err != nil {
 		return err
@@ -109,4 +129,16 @@ func (s *FileStorage) BatchSave(ctx context.Context, records []struct {
 	}
 
 	return s.saveToFile()
+}
+
+func (s *FileStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for id, url := range s.urls {
+		if url == originalURL {
+			return id, nil
+		}
+	}
+	return "", ErrNotFound
 }

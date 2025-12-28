@@ -5,23 +5,26 @@ import (
 	"errors"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/glebb1331/shortener-practicum/internal/storage"
 )
 
 var ErrEmptyURL = errors.New("empty url")
-var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 type URLService struct {
 	store   storage.Storage
 	baseURL string
+	rnd     *rand.Rand
+	mu      sync.Mutex
 }
 
 func NewURLService(store storage.Storage, baseURL string) *URLService {
 	return &URLService{
 		store:   store,
 		baseURL: baseURL,
+		rnd:     rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -30,22 +33,19 @@ func (s *URLService) Shorten(url string) (string, error) {
 		return "", ErrEmptyURL
 	}
 
-	id := generateID()
-	err := s.store.Save(context.Background(), id, url)
+	s.mu.Lock()
+	id := generateID(s.rnd)
+	s.mu.Unlock()
+
+	storedID, err := s.store.Save(context.Background(), id, url)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLExists) {
-			if db, ok := s.store.(*storage.DatabaseStorage); ok {
-				existingID, err := db.GetByOriginalURL(context.Background(), url)
-				if err != nil {
-					return "", err
-				}
-				return s.baseURL + "/" + existingID, storage.ErrURLExists
-			}
+			return s.baseURL + "/" + storedID, storage.ErrURLExists
 		}
 		return "", err
 	}
 
-	return s.baseURL + "/" + id, nil
+	return s.baseURL + "/" + storedID, nil
 }
 
 func (s *URLService) Resolve(id string) (string, bool) {
@@ -60,7 +60,7 @@ func (s *URLService) Ping(ctx context.Context) error {
 	return s.store.Ping(ctx)
 }
 
-func generateID() string {
+func generateID(rnd *rand.Rand) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, 8)
 	for i := range b {
@@ -86,7 +86,10 @@ func (s *URLService) ShortenBatch(urls []BatchRequestItem) ([]BatchResponseItem,
 			return nil, ErrEmptyURL
 		}
 
-		id := generateID()
+		s.mu.Lock()
+		id := generateID(s.rnd)
+		s.mu.Unlock()
+
 		records[i] = struct {
 			ID          string
 			OriginalURL string
@@ -101,23 +104,8 @@ func (s *URLService) ShortenBatch(urls []BatchRequestItem) ([]BatchResponseItem,
 		}
 	}
 
-	if batchStorage, ok := s.store.(interface {
-		BatchSave(ctx context.Context, records []struct {
-			ID          string
-			OriginalURL string
-		}) error
-	}); ok {
-		err := batchStorage.BatchSave(context.Background(), records)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		for _, record := range records {
-			if err := s.store.Save(context.Background(), record.ID, record.OriginalURL); err != nil {
-				return nil, err
-			}
-		}
+	if err := s.store.BatchSave(context.Background(), records); err != nil {
+		return nil, err
 	}
-
 	return response, nil
 }
