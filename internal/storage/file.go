@@ -101,13 +101,8 @@ func (s *FileStorage) loadFromFile() error {
 }
 
 func (s *FileStorage) saveToFile() error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	data, err := json.MarshalIndent(s.urls, "", "  ")
 	if err != nil {
