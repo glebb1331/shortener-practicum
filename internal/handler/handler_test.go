@@ -126,15 +126,15 @@ func TestShortenHandler(t *testing.T) {
 }
 
 func TestAPIShortenHandler_WithGzip(t *testing.T) {
-	store := storage.NewMemoryStorage()
-	h, err := NewHandler("http://localhost:8080", store)
-	require.NoError(t, err)
-
-	r := chi.NewRouter()
-	r.Use(middleware.WithGzip)
-	r.Post("/api/shorten", h.APIShortenHandler)
 
 	t.Run("gzip compressed request", func(t *testing.T) {
+		store := storage.NewMemoryStorage()
+		h, err := NewHandler("http://localhost:8080", store)
+		require.NoError(t, err)
+
+		r := chi.NewRouter()
+		r.Use(middleware.WithGzip)
+		r.Post("/api/shorten", h.APIShortenHandler)
 
 		jsonBody := `{"url":"https://practicum.yandex.ru"}`
 		var buf bytes.Buffer
@@ -169,6 +169,14 @@ func TestAPIShortenHandler_WithGzip(t *testing.T) {
 	})
 
 	t.Run("gzip compressed response", func(t *testing.T) {
+		store := storage.NewMemoryStorage()
+		h, err := NewHandler("http://localhost:8080", store)
+		require.NoError(t, err)
+
+		r := chi.NewRouter()
+		r.Use(middleware.WithGzip)
+		r.Post("/api/shorten", h.APIShortenHandler)
+
 		jsonBody := `{"url":"https://practicum.yandex.ru"}`
 
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten", bytes.NewBufferString(jsonBody))
