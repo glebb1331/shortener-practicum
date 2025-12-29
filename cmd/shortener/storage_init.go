@@ -12,20 +12,26 @@ import (
 func initStorage(cfg *config.Config) storage.Storage {
 	if cfg.DatabaseDSN != "" {
 		db, err := sql.Open("pgx", cfg.DatabaseDSN)
-		if err == nil {
+		if err != nil {
+			log.Printf("Failed to open database: %v", err)
+		} else {
 			store, err := storage.NewDatabaseStorage(db)
-			if err == nil {
+			if err != nil {
+				log.Printf("Failed to init database storage: %v", err)
+				db.Close()
+			} else {
 				log.Println("Using PostgreSQL storage")
 				return store
 			}
-			db.Close()
 		}
 	}
 
 	if cfg.FileStoragePath != "" {
 		store, err := storage.NewFileStorage(cfg.FileStoragePath)
-		if err == nil {
-			log.Println("Using file storage")
+		if err != nil {
+			log.Printf("Failed to init file storage: %v", err)
+		} else {
+			log.Printf("Using file storage at: %s", cfg.FileStoragePath)
 			return store
 		}
 	}

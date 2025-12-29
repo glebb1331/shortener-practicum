@@ -16,22 +16,24 @@ type URLRecord struct {
 
 type FileStorage struct {
 	mu       sync.RWMutex
-	urls     map[string]string
+	records  []URLRecord
+	index    map[string]string
 	filePath string
 }
 
 func NewFileStorage(filePath string) (*FileStorage, error) {
-	s := &FileStorage{
-		urls:     make(map[string]string),
-		filePath: filePath,
-	}
-
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
 
-	if err := s.loadFromFile(); err != nil {
+	s := &FileStorage{
+		records:  []URLRecord{},
+		index:    make(map[string]string),
+		filePath: filePath,
+	}
+
+	if err := s.load(); err != nil {
 		return nil, err
 	}
 
@@ -42,36 +44,37 @@ func (s *FileStorage) Save(ctx context.Context, id, originalURL string) (string,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for existingID, url := range s.urls {
-		if url == originalURL {
-			return existingID, ErrURLExists
+	// проверка на дубликат
+	for _, r := range s.records {
+		if r.OriginalURL == originalURL {
+			return r.ShortURL, ErrURLExists
 		}
 	}
 
-	s.urls[id] = originalURL
-	return id, s.saveToFile()
+	record := URLRecord{
+		UUID:        string(len(s.records) + 1),
+		ShortURL:    id,
+		OriginalURL: originalURL,
+	}
+
+	s.records = append(s.records, record)
+	s.index[id] = originalURL
+
+	return id, s.save()
 }
 
 func (s *FileStorage) Get(ctx context.Context, id string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	url, ok := s.urls[id]
+	url, ok := s.index[id]
 	if !ok {
 		return "", ErrNotFound
 	}
 	return url, nil
 }
 
-func (s *FileStorage) Close() error {
-	return nil
-}
-
-func (s *FileStorage) Ping(ctx context.Context) error {
-	return nil
-}
-
-func (s *FileStorage) loadFromFile() error {
+func (s *FileStorage) load() error {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -80,59 +83,47 @@ func (s *FileStorage) loadFromFile() error {
 		return err
 	}
 
-	if len(data) == 0 {
-		return nil
-	}
-
-	if err := json.Unmarshal(data, &s.urls); err == nil {
-		return nil
-	}
-
-	var records []URLRecord
-	if err := json.Unmarshal(data, &records); err != nil {
+	if err := json.Unmarshal(data, &s.records); err != nil {
 		return err
 	}
 
-	for _, record := range records {
-		s.urls[record.ShortURL] = record.OriginalURL
+	for _, r := range s.records {
+		s.index[r.ShortURL] = r.OriginalURL
 	}
 
 	return nil
 }
 
-func (s *FileStorage) saveToFile() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	data, err := json.MarshalIndent(s.urls, "", "  ")
+func (s *FileStorage) save() error {
+	data, err := json.MarshalIndent(s.records, "", "  ")
 	if err != nil {
 		return err
 	}
-
 	return os.WriteFile(s.filePath, data, 0644)
 }
+
+func (s *FileStorage) Close() error                   { return nil }
+func (s *FileStorage) Ping(ctx context.Context) error { return nil }
 
 func (s *FileStorage) BatchSave(ctx context.Context, records []struct {
 	ID          string
 	OriginalURL string
 }) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for _, record := range records {
-		s.urls[record.ID] = record.OriginalURL
+	for _, r := range records {
+		if _, err := s.Save(ctx, r.ID, r.OriginalURL); err != nil {
+			return err
+		}
 	}
-
-	return s.saveToFile()
+	return nil
 }
 
 func (s *FileStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for id, url := range s.urls {
-		if url == originalURL {
-			return id, nil
+	for _, r := range s.records {
+		if r.OriginalURL == originalURL {
+			return r.ShortURL, nil
 		}
 	}
 	return "", ErrNotFound
