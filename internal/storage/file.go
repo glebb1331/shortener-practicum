@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 )
 
@@ -52,7 +53,7 @@ func (s *FileStorage) Save(ctx context.Context, id, originalURL string) (string,
 	}
 
 	record := URLRecord{
-		UUID:        string(len(s.records) + 1),
+		UUID:        strconv.Itoa(len(s.records) + 1),
 		ShortURL:    id,
 		OriginalURL: originalURL,
 	}
