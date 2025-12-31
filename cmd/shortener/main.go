@@ -41,14 +41,11 @@ func main() {
 	r.Post("/api/shorten", h.APIShortenHandler)
 	r.Post("/api/shorten/batch", h.APIShortenBatchHandler)
 
-	// Эндпоинт для истории URL пользователя
 	r.Get("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// Если данных нет, по спецификации часто требуется 204 No Content
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	// В самом конце — жадный поиск по ID
 	r.Post("/", h.ShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)
 
