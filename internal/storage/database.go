@@ -29,7 +29,7 @@ func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL string) (str
 		return existingID, ErrURLExists
 	}
 
-	if err != nil && !errors.Is(err, ErrNotFound) {
+	if !errors.Is(err, ErrNotFound) {
 		return "", err
 	}
 
