@@ -55,6 +55,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, storage.ErrURLExists) {
+			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusConflict)
 			w.Write([]byte(result))
 			return
