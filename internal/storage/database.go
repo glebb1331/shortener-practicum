@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/glebb1331/shortener-practicum/migrations"
 )
@@ -23,23 +24,30 @@ func NewDatabaseStorage(db *sql.DB) (*DatabaseStorage, error) {
 }
 
 func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL string) (string, error) {
-	query := `
-        INSERT INTO urls (id, original_url)
-        VALUES ($1, $2)
-        ON CONFLICT (original_url) DO NOTHING
-        RETURNING id
-    `
-
-	var storedID string
-	err := s.db.QueryRowContext(ctx, query, id, originalURL).Scan(&storedID)
-	if err == sql.ErrNoRows {
-		return "", ErrURLExists
+	existingID, err := s.GetByOriginalURL(ctx, originalURL)
+	if err == nil {
+		return existingID, ErrURLExists
 	}
-	if err != nil {
+
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return "", err
 	}
 
-	return storedID, nil
+	query := `INSERT INTO urls (id, original_url) VALUES ($1, $2)`
+	_, err = s.db.ExecContext(ctx, query, id, originalURL)
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") ||
+			strings.Contains(err.Error(), "unique constraint") {
+			existingID, err2 := s.GetByOriginalURL(ctx, originalURL)
+			if err2 != nil {
+				return "", err2
+			}
+			return existingID, ErrURLExists
+		}
+		return "", err
+	}
+
+	return id, nil
 }
 
 func (s *DatabaseStorage) Get(ctx context.Context, id string) (string, error) {
@@ -82,7 +90,8 @@ func (s *DatabaseStorage) BatchSave(ctx context.Context, records []struct {
 	defer stmt.Close()
 
 	for _, record := range records {
-		if _, err := stmt.ExecContext(ctx, record.ID, record.OriginalURL); err != nil {
+		_, err := s.Save(ctx, record.ID, record.OriginalURL)
+		if err != nil && !errors.Is(err, ErrURLExists) {
 			return err
 		}
 	}
@@ -95,6 +104,9 @@ func (s *DatabaseStorage) GetByOriginalURL(ctx context.Context, originalURL stri
 	var id string
 	err := s.db.QueryRowContext(ctx, query, originalURL).Scan(&id)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrNotFound
+		}
 		return "", err
 	}
 	return id, nil
