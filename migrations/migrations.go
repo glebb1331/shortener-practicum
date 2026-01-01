@@ -40,6 +40,18 @@ var migrations = []Migration{
             DROP INDEX IF EXISTS idx_urls_original_url_unique;
         `,
 	},
+	{
+		Version: 3,
+		Name:    "add_user_id_to_urls",
+		Up: `
+            ALTER TABLE urls ADD COLUMN user_id TEXT NOT NULL DEFAULT '';
+            CREATE INDEX IF NOT EXISTS idx_urls_user_id ON urls(user_id);
+        `,
+		Down: `
+            DROP INDEX IF EXISTS idx_urls_user_id;
+            ALTER TABLE urls DROP COLUMN user_id;
+        `,
+	},
 }
 
 func RunMigrations(ctx context.Context, db *sql.DB) error {

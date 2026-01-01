@@ -23,7 +23,7 @@ func NewDatabaseStorage(db *sql.DB) (*DatabaseStorage, error) {
 	return s, nil
 }
 
-func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL string) (string, error) {
+func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL, userID string) (string, error) {
 	existingID, err := s.GetByOriginalURL(ctx, originalURL)
 	if err == nil {
 		return existingID, ErrURLExists
@@ -33,8 +33,8 @@ func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL string) (str
 		return "", err
 	}
 
-	query := `INSERT INTO urls (id, original_url) VALUES ($1, $2)`
-	_, err = s.db.ExecContext(ctx, query, id, originalURL)
+	query := `INSERT INTO urls (id, original_url, user_id) VALUES ($1, $2, $3)`
+	_, err = s.db.ExecContext(ctx, query, id, originalURL, userID)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") ||
 			strings.Contains(err.Error(), "unique constraint") {
@@ -73,25 +73,22 @@ func (s *DatabaseStorage) Ping(ctx context.Context) error {
 	return s.db.PingContext(ctx)
 }
 
-func (s *DatabaseStorage) BatchSave(ctx context.Context, records []struct {
-	ID          string
-	OriginalURL string
-}) error {
+func (s *DatabaseStorage) BatchSave(ctx context.Context, records []Record) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, "INSERT INTO urls (id, original_url) VALUES ($1, $2)")
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO urls (id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO NOTHING")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	for _, record := range records {
-		_, err := s.Save(ctx, record.ID, record.OriginalURL)
-		if err != nil && !errors.Is(err, ErrURLExists) {
+		_, err := stmt.ExecContext(ctx, record.ID, record.OriginalURL, record.UserID)
+		if err != nil {
 			return err
 		}
 	}
@@ -110,4 +107,28 @@ func (s *DatabaseStorage) GetByOriginalURL(ctx context.Context, originalURL stri
 		return "", err
 	}
 	return id, nil
+}
+
+func (s *DatabaseStorage) GetByUserID(ctx context.Context, userID string) ([]Record, error) {
+	query := `SELECT id, original_url, user_id FROM urls WHERE user_id = $1 ORDER BY created_at DESC`
+	rows, err := s.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []Record
+	for rows.Next() {
+		var rec Record
+		if err := rows.Scan(&rec.ID, &rec.OriginalURL, &rec.UserID); err != nil {
+			return nil, err
+		}
+		records = append(records, rec)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return records, nil
 }

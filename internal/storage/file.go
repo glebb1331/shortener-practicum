@@ -7,12 +7,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type URLRecord struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      string `json:"user_id"`
+	CreatedAt   string `json:"created_at"`
 }
 
 type FileStorage struct {
@@ -41,11 +44,10 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 	return s, nil
 }
 
-func (s *FileStorage) Save(ctx context.Context, id, originalURL string) (string, error) {
+func (s *FileStorage) Save(ctx context.Context, id, originalURL, userID string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// проверка на дубликат
 	for _, r := range s.records {
 		if r.OriginalURL == originalURL {
 			return r.ShortURL, ErrURLExists
@@ -56,6 +58,8 @@ func (s *FileStorage) Save(ctx context.Context, id, originalURL string) (string,
 		UUID:        strconv.Itoa(len(s.records) + 1),
 		ShortURL:    id,
 		OriginalURL: originalURL,
+		UserID:      userID,
+		CreatedAt:   time.Now().Format(time.RFC3339),
 	}
 
 	s.records = append(s.records, record)
@@ -106,12 +110,9 @@ func (s *FileStorage) save() error {
 func (s *FileStorage) Close() error                   { return nil }
 func (s *FileStorage) Ping(ctx context.Context) error { return nil }
 
-func (s *FileStorage) BatchSave(ctx context.Context, records []struct {
-	ID          string
-	OriginalURL string
-}) error {
+func (s *FileStorage) BatchSave(ctx context.Context, records []Record) error {
 	for _, r := range records {
-		if _, err := s.Save(ctx, r.ID, r.OriginalURL); err != nil {
+		if _, err := s.Save(ctx, r.ID, r.OriginalURL, r.UserID); err != nil {
 			return err
 		}
 	}
@@ -128,4 +129,22 @@ func (s *FileStorage) GetByOriginalURL(ctx context.Context, originalURL string) 
 		}
 	}
 	return "", ErrNotFound
+}
+
+func (s *FileStorage) GetByUserID(ctx context.Context, userID string) ([]Record, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []Record
+	for _, r := range s.records {
+		if r.UserID == userID {
+			result = append(result, Record{
+				ID:          r.ShortURL,
+				OriginalURL: r.OriginalURL,
+				UserID:      r.UserID,
+			})
+		}
+	}
+
+	return result, nil
 }

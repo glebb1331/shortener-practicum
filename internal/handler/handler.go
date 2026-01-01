@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -41,6 +42,12 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		http.Error(w, "Not authorized", http.StatusUnauthorized)
+		return
+	}
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -48,7 +55,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	result, err := h.service.Shorten(string(body))
+	result, err := h.service.Shorten(context.Background(), string(body), userID)
 	if err != nil {
 		if errors.Is(err, ErrEmptyURL) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -95,6 +102,12 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		http.Error(w, "Not authorized", http.StatusUnauthorized)
+		return
+	}
+
 	defer r.Body.Close()
 
 	var req ShortenRequest
@@ -103,9 +116,9 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.service.Shorten(req.URL)
+	result, err := h.service.Shorten(context.Background(), req.URL, userID)
 	if err != nil {
-		if err == ErrEmptyURL {
+		if errors.Is(err, ErrEmptyURL) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -142,6 +155,12 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 
 	defer r.Body.Close()
 
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		http.Error(w, "missing userID", http.StatusUnauthorized)
+		return
+	}
+
 	var batchRequests []BatchRequestItem
 	if err := json.NewDecoder(r.Body).Decode(&batchRequests); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -153,7 +172,7 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	result, err := h.service.ShortenBatch(batchRequests)
+	result, err := h.service.ShortenBatch(context.Background(), batchRequests, userID)
 	if err != nil {
 		if errors.Is(err, ErrEmptyURL) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -166,4 +185,34 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(result)
+}
+
+func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	records, err := h.service.GetByUserID(context.Background(), userID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if len(records) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	resp := make([]map[string]string, 0, len(records))
+	for _, rec := range records {
+		resp = append(resp, map[string]string{
+			"short_url":    h.service.BaseURL() + "/" + rec.ID,
+			"original_url": rec.OriginalURL,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }

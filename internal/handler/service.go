@@ -28,7 +28,7 @@ func NewURLService(store storage.Storage, baseURL string) *URLService {
 	}
 }
 
-func (s *URLService) Shorten(url string) (string, error) {
+func (s *URLService) Shorten(ctx context.Context, url, userID string) (string, error) {
 	if strings.TrimSpace(url) == "" {
 		return "", ErrEmptyURL
 	}
@@ -37,7 +37,7 @@ func (s *URLService) Shorten(url string) (string, error) {
 	id := generateID(s.rnd)
 	s.mu.Unlock()
 
-	storedID, err := s.store.Save(context.Background(), id, url)
+	storedID, err := s.store.Save(ctx, id, url, userID)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLExists) {
 			return s.baseURL + "/" + storedID, storage.ErrURLExists
@@ -69,16 +69,12 @@ func generateID(rnd *rand.Rand) string {
 	return string(b)
 }
 
-func (s *URLService) ShortenBatch(urls []BatchRequestItem) ([]BatchResponseItem, error) {
+func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, userID string) ([]BatchResponseItem, error) {
 	if len(urls) == 0 {
 		return nil, errors.New("empty urls")
 	}
 
-	records := make([]struct {
-		ID          string
-		OriginalURL string
-	}, len(urls))
-
+	records := make([]storage.Record, len(urls))
 	response := make([]BatchResponseItem, len(urls))
 
 	for i, item := range urls {
@@ -90,12 +86,10 @@ func (s *URLService) ShortenBatch(urls []BatchRequestItem) ([]BatchResponseItem,
 		id := generateID(s.rnd)
 		s.mu.Unlock()
 
-		records[i] = struct {
-			ID          string
-			OriginalURL string
-		}{
+		records[i] = storage.Record{
 			ID:          id,
 			OriginalURL: item.OriginalURL,
+			UserID:      userID,
 		}
 
 		response[i] = BatchResponseItem{
@@ -104,8 +98,16 @@ func (s *URLService) ShortenBatch(urls []BatchRequestItem) ([]BatchResponseItem,
 		}
 	}
 
-	if err := s.store.BatchSave(context.Background(), records); err != nil {
+	if err := s.store.BatchSave(ctx, records); err != nil {
 		return nil, err
 	}
 	return response, nil
+}
+
+func (s *URLService) GetByUserID(ctx context.Context, userID string) ([]storage.Record, error) {
+	return s.store.GetByUserID(ctx, userID)
+}
+
+func (s *URLService) BaseURL() string {
+	return s.baseURL
 }

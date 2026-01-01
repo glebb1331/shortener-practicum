@@ -31,6 +31,7 @@ func main() {
 
 	r.Use(middleware.WithLogging)
 	r.Use(middleware.WithGzip)
+	r.Use(middleware.WithAuth)
 
 	h, err := handler.NewHandler(cfg.BaseURL, store)
 	if err != nil {
@@ -41,10 +42,7 @@ func main() {
 	r.Post("/api/shorten", h.APIShortenHandler)
 	r.Post("/api/shorten/batch", h.APIShortenBatchHandler)
 
-	r.Get("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNoContent)
-	})
+	r.Get("/api/user/urls", h.GetUserURLs)
 
 	r.Post("/", h.ShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)
