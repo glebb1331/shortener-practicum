@@ -147,7 +147,13 @@ func (s *URLService) asyncDeleteURLs(ctx context.Context, userID string, ids []s
 		idChannels = append(idChannels, ch)
 	}
 
-	//resultChan := s.fanInDelete(ctx, userID, idChannels)
+	resultChan := s.fanInDelete(ctx, userID, idChannels)
+
+	go func() {
+		for err := range resultChan {
+			_ = err
+		}
+	}()
 }
 
 func (s *URLService) fanInDelete(ctx context.Context, userID string, channels []chan []string) <-chan error {
