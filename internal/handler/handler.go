@@ -79,7 +79,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/")
 
-	originalURL, err := h.service.Resolve(id)
+	originalURL, err := h.service.Resolve(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			http.Error(w, "not found", http.StatusNotFound)
@@ -91,11 +91,6 @@ func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
-	}
-
-	if !strings.HasPrefix(originalURL, "http://") &&
-		!strings.HasPrefix(originalURL, "https://") {
-		originalURL = "http://" + originalURL
 	}
 
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)

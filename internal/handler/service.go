@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"log"
 	"math/rand"
 	"strings"
 	"sync"
@@ -48,12 +49,8 @@ func (s *URLService) Shorten(ctx context.Context, url, userID string) (string, e
 	return s.baseURL + "/" + storedID, nil
 }
 
-func (s *URLService) Resolve(id string) (string, error) {
-	url, err := s.store.Get(context.Background(), id)
-	if err != nil {
-		return "", err
-	}
-	return url, nil
+func (s *URLService) Resolve(ctx context.Context, id string) (string, error) {
+	return s.store.Get(ctx, id)
 }
 
 func (s *URLService) Ping(ctx context.Context) error {
@@ -117,16 +114,25 @@ func (s *URLService) DeleteURLs(ctx context.Context, userID string, ids []string
 		return errors.New("empty ids")
 	}
 
-	records, err := s.store.GetBatchByUserID(ctx, userID, ids)
-	if err != nil {
-		return err
-	}
+	go func() {
+		bgCtx := context.Background()
 
-	if len(records) != len(ids) {
-		return storage.ErrNotOwner
-	}
+		batchSize := 100
+		for i := 0; i < len(ids); i += batchSize {
+			end := i + batchSize
+			if end > len(ids) {
+				end = len(ids)
+			}
+			batch := ids[i:end]
 
-	go s.asyncDeleteURLs(ctx, userID, ids)
+			if err := s.store.DeleteURLs(bgCtx, userID, batch); err != nil {
+				log.Printf("Error deleting URLs batch: %v", err)
+			}
+
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+
 	return nil
 }
 
