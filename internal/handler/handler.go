@@ -79,9 +79,17 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/")
 
-	originalURL, ok := h.service.Resolve(id)
-	if !ok {
-		http.Error(w, "not found", http.StatusNotFound)
+	originalURL, err := h.service.Resolve(id)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, storage.ErrURLDeleted) {
+			http.Error(w, "gone", http.StatusGone)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
@@ -215,4 +223,46 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	defer r.Body.Close()
+
+	var ids []string
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if len(ids) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.DeleteURLs(r.Context(), userID, ids); err != nil {
+		if errors.Is(err, storage.ErrNotOwner) {
+			http.Error(w, "user is not owner of some urls", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }

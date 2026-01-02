@@ -38,6 +38,11 @@ func (s *MemoryStorage) Get(ctx context.Context, id string) (string, error) {
 	if !ok {
 		return "", ErrNotFound
 	}
+
+	if rec.IsDeleted {
+		return "", ErrURLDeleted
+	}
+
 	return rec.OriginalURL, nil
 }
 
@@ -88,4 +93,30 @@ func (s *MemoryStorage) GetByUserID(ctx context.Context, userID string) ([]Recor
 	}
 
 	return result, nil
+}
+
+func (s *MemoryStorage) DeleteURLs(ctx context.Context, userID string, ids []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, id := range ids {
+		if rec, ok := s.urls[id]; ok && rec.UserID == userID {
+			rec.IsDeleted = true
+			s.urls[id] = rec
+		}
+	}
+	return nil
+}
+
+func (s *MemoryStorage) GetBatchByUserID(ctx context.Context, userID string, ids []string) ([]Record, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var records []Record
+	for _, id := range ids {
+		if rec, ok := s.urls[id]; ok && rec.UserID == userID {
+			records = append(records, rec)
+		}
+	}
+	return records, nil
 }

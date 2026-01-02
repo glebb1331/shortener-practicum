@@ -51,15 +51,20 @@ func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL, userID stri
 }
 
 func (s *DatabaseStorage) Get(ctx context.Context, id string) (string, error) {
-	query := `SELECT original_url FROM urls WHERE id = $1`
+	query := `SELECT original_url, is_deleted FROM urls WHERE id = $1`
 
 	var originalURL string
-	err := s.db.QueryRowContext(ctx, query, id).Scan(&originalURL)
+	var isDeleted bool
+	err := s.db.QueryRowContext(ctx, query, id).Scan(&originalURL, &isDeleted)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrNotFound
 		}
 		return "", err
+	}
+
+	if isDeleted {
+		return "", ErrURLDeleted
 	}
 
 	return originalURL, nil
@@ -110,7 +115,9 @@ func (s *DatabaseStorage) GetByOriginalURL(ctx context.Context, originalURL stri
 }
 
 func (s *DatabaseStorage) GetByUserID(ctx context.Context, userID string) ([]Record, error) {
-	query := `SELECT id, original_url, user_id FROM urls WHERE user_id = $1 ORDER BY created_at DESC`
+	query := `SELECT id, original_url, user_id, is_deleted FROM urls 
+              WHERE user_id = $1 AND is_deleted = FALSE 
+              ORDER BY created_at DESC`
 	rows, err := s.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		return nil, err
@@ -120,7 +127,50 @@ func (s *DatabaseStorage) GetByUserID(ctx context.Context, userID string) ([]Rec
 	var records []Record
 	for rows.Next() {
 		var rec Record
-		if err := rows.Scan(&rec.ID, &rec.OriginalURL, &rec.UserID); err != nil {
+		if err := rows.Scan(&rec.ID, &rec.OriginalURL, &rec.UserID, &rec.IsDeleted); err != nil {
+			return nil, err
+		}
+		records = append(records, rec)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return records, nil
+}
+
+func (s *DatabaseStorage) DeleteURLs(ctx context.Context, userID string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	query := `UPDATE urls SET is_deleted = TRUE 
+              WHERE user_id = $1 AND id = ANY($2)`
+
+	_, err := s.db.ExecContext(ctx, query, userID, ids)
+	return err
+}
+
+func (s *DatabaseStorage) GetBatchByUserID(ctx context.Context, userID string, ids []string) ([]Record, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	query := `SELECT id, original_url, user_id, is_deleted 
+              FROM urls 
+              WHERE user_id = $1 AND id = ANY($2)`
+
+	rows, err := s.db.QueryContext(ctx, query, userID, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []Record
+	for rows.Next() {
+		var rec Record
+		if err := rows.Scan(&rec.ID, &rec.OriginalURL, &rec.UserID, &rec.IsDeleted); err != nil {
 			return nil, err
 		}
 		records = append(records, rec)

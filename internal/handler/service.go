@@ -48,12 +48,12 @@ func (s *URLService) Shorten(ctx context.Context, url, userID string) (string, e
 	return s.baseURL + "/" + storedID, nil
 }
 
-func (s *URLService) Resolve(id string) (string, bool) {
+func (s *URLService) Resolve(id string) (string, error) {
 	url, err := s.store.Get(context.Background(), id)
 	if err != nil {
-		return "", false
+		return "", err
 	}
-	return url, true
+	return url, nil
 }
 
 func (s *URLService) Ping(ctx context.Context) error {
@@ -110,4 +110,68 @@ func (s *URLService) GetByUserID(ctx context.Context, userID string) ([]storage.
 
 func (s *URLService) BaseURL() string {
 	return s.baseURL
+}
+
+func (s *URLService) DeleteURLs(ctx context.Context, userID string, ids []string) error {
+	if len(ids) == 0 {
+		return errors.New("empty ids")
+	}
+
+	records, err := s.store.GetBatchByUserID(ctx, userID, ids)
+	if err != nil {
+		return err
+	}
+
+	if len(records) != len(ids) {
+		return storage.ErrNotOwner
+	}
+
+	go s.asyncDeleteURLs(ctx, userID, ids)
+	return nil
+}
+
+func (s *URLService) asyncDeleteURLs(ctx context.Context, userID string, ids []string) {
+	batchSize := 100
+	idChannels := make([]chan []string, 0)
+
+	for i := 0; i < len(ids); i += batchSize {
+		end := i + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[i:end]
+
+		ch := make(chan []string, 1)
+		ch <- batch
+		close(ch)
+		idChannels = append(idChannels, ch)
+	}
+
+	//resultChan := s.fanInDelete(ctx, userID, idChannels)
+}
+
+func (s *URLService) fanInDelete(ctx context.Context, userID string, channels []chan []string) <-chan error {
+	out := make(chan error)
+	var wg sync.WaitGroup
+
+	processChannel := func(ch <-chan []string) {
+		defer wg.Done()
+		for batch := range ch {
+			if err := s.store.DeleteURLs(ctx, userID, batch); err != nil {
+				out <- err
+			}
+		}
+	}
+
+	wg.Add(len(channels))
+	for _, ch := range channels {
+		go processChannel(ch)
+	}
+
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+
+	return out
 }

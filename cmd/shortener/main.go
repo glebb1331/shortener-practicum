@@ -43,6 +43,7 @@ func main() {
 	r.Post("/api/shorten/batch", h.APIShortenBatchHandler)
 
 	r.Get("/api/user/urls", h.GetUserURLs)
+	r.Delete("/api/user/urls", h.DeleteUserURLs)
 
 	r.Post("/", h.ShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)

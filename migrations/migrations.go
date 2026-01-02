@@ -52,6 +52,18 @@ var migrations = []Migration{
             ALTER TABLE urls DROP COLUMN user_id;
         `,
 	},
+	{
+		Version: 4,
+		Name:    "add_is_deleted_to_urls",
+		Up: `
+            ALTER TABLE urls ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE;
+            CREATE INDEX IF NOT EXISTS idx_urls_is_deleted ON urls(is_deleted);
+        `,
+		Down: `
+            DROP INDEX IF EXISTS idx_urls_is_deleted;
+            ALTER TABLE urls DROP COLUMN is_deleted;
+        `,
+	},
 }
 
 func RunMigrations(ctx context.Context, db *sql.DB) error {

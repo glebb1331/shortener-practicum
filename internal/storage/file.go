@@ -16,6 +16,7 @@ type URLRecord struct {
 	OriginalURL string `json:"original_url"`
 	UserID      string `json:"user_id"`
 	CreatedAt   string `json:"created_at"`
+	IsDeleted   bool   `json:"is_deleted"`
 }
 
 type FileStorage struct {
@@ -72,11 +73,15 @@ func (s *FileStorage) Get(ctx context.Context, id string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	url, ok := s.index[id]
-	if !ok {
-		return "", ErrNotFound
+	for _, r := range s.records {
+		if r.ShortURL == id {
+			if r.IsDeleted {
+				return "", ErrURLDeleted
+			}
+			return r.OriginalURL, nil
+		}
 	}
-	return url, nil
+	return "", ErrNotFound
 }
 
 func (s *FileStorage) load() error {
@@ -147,4 +152,44 @@ func (s *FileStorage) GetByUserID(ctx context.Context, userID string) ([]Record,
 	}
 
 	return result, nil
+}
+
+func (s *FileStorage) DeleteURLs(ctx context.Context, userID string, ids []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	deleted := false
+	for i := range s.records {
+		for _, id := range ids {
+			if s.records[i].ShortURL == id && s.records[i].UserID == userID {
+				s.records[i].IsDeleted = true
+				deleted = true
+			}
+		}
+	}
+
+	if deleted {
+		return s.save()
+	}
+	return nil
+}
+
+func (s *FileStorage) GetBatchByUserID(ctx context.Context, userID string, ids []string) ([]Record, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var records []Record
+	for _, r := range s.records {
+		for _, id := range ids {
+			if r.ShortURL == id && r.UserID == userID {
+				records = append(records, Record{
+					ID:          r.ShortURL,
+					OriginalURL: r.OriginalURL,
+					UserID:      r.UserID,
+					IsDeleted:   r.IsDeleted,
+				})
+			}
+		}
+	}
+	return records, nil
 }
