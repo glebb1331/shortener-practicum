@@ -93,6 +93,11 @@ func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !strings.HasPrefix(originalURL, "http://") &&
+		!strings.HasPrefix(originalURL, "https://") {
+		originalURL = "http://" + originalURL
+	}
+
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
 }
 
