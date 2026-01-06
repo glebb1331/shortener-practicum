@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 
 	"github.com/glebb1331/shortener-practicum/migrations"
 )
@@ -24,27 +23,22 @@ func NewDatabaseStorage(db *sql.DB) (*DatabaseStorage, error) {
 }
 
 func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL, userID string) (string, error) {
-	existingID, err := s.GetByOriginalURL(ctx, originalURL)
-	if err == nil {
-		return existingID, ErrURLExists
-	}
+	query := `
+		INSERT INTO urls (id, original_url, user_id) 
+		VALUES ($1, $2, $3) 
+		ON CONFLICT (original_url) 
+		DO UPDATE SET original_url = EXCLUDED.original_url 
+		RETURNING id
+	`
 
-	if !errors.Is(err, ErrNotFound) {
-		return "", err
-	}
-
-	query := `INSERT INTO urls (id, original_url, user_id) VALUES ($1, $2, $3)`
-	_, err = s.db.ExecContext(ctx, query, id, originalURL, userID)
+	var existingID string
+	err := s.db.QueryRowContext(ctx, query, id, originalURL, userID).Scan(&existingID)
 	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key") ||
-			strings.Contains(err.Error(), "unique constraint") {
-			existingID, err2 := s.GetByOriginalURL(ctx, originalURL)
-			if err2 != nil {
-				return "", err2
-			}
-			return existingID, ErrURLExists
-		}
 		return "", err
+	}
+
+	if existingID != id {
+		return existingID, ErrURLExists
 	}
 
 	return id, nil
@@ -79,23 +73,53 @@ func (s *DatabaseStorage) Ping(ctx context.Context) error {
 }
 
 func (s *DatabaseStorage) BatchSave(ctx context.Context, records []Record) error {
+	if len(records) == 0 {
+		return nil
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, "INSERT INTO urls (id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO NOTHING")
+	_, err = tx.ExecContext(ctx, `
+		CREATE TEMP TABLE temp_urls (
+			id TEXT PRIMARY KEY,
+			original_url TEXT UNIQUE,
+			user_id TEXT
+		) ON COMMIT DROP
+	`)
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+		COPY temp_urls (id, original_url, user_id) FROM STDIN
+	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	for _, record := range records {
-		_, err := stmt.ExecContext(ctx, record.ID, record.OriginalURL, record.UserID)
+	for _, rec := range records {
+		_, err = stmt.ExecContext(ctx, rec.ID, rec.OriginalURL, rec.UserID)
 		if err != nil {
 			return err
 		}
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO urls (id, original_url, user_id)
+		SELECT t.id, t.original_url, t.user_id
+		FROM temp_urls t
+		WHERE NOT EXISTS (
+			SELECT 1 FROM urls u WHERE u.original_url = t.original_url
+		)
+		ON CONFLICT (original_url) DO NOTHING
+	`)
+	if err != nil {
+		return err
 	}
 
 	return tx.Commit()

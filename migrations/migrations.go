@@ -33,12 +33,13 @@ var migrations = []Migration{
 		Version: 2,
 		Name:    "add_unique_original_url",
 		Up: `
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_urls_original_url_unique
-            ON urls(original_url);
-        `,
+		ALTER TABLE urls ADD CONSTRAINT unique_original_url UNIQUE (original_url);
+		CREATE INDEX IF NOT EXISTS idx_urls_original_url ON urls(original_url);
+	`,
 		Down: `
-            DROP INDEX IF EXISTS idx_urls_original_url_unique;
-        `,
+		ALTER TABLE urls DROP CONSTRAINT unique_original_url;
+		DROP INDEX IF EXISTS idx_urls_original_url;
+	`,
 	},
 	{
 		Version: 3,

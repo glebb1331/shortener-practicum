@@ -71,7 +71,7 @@ func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, 
 		return nil, errors.New("empty urls")
 	}
 
-	records := make([]storage.Record, len(urls))
+	records := make([]storage.Record, 0, len(urls))
 	response := make([]BatchResponseItem, len(urls))
 
 	for i, item := range urls {
@@ -83,11 +83,11 @@ func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, 
 		id := generateID(s.rnd)
 		s.mu.Unlock()
 
-		records[i] = storage.Record{
+		records = append(records, storage.Record{
 			ID:          id,
 			OriginalURL: item.OriginalURL,
 			UserID:      userID,
-		}
+		})
 
 		response[i] = BatchResponseItem{
 			CorrelationID: item.CorrelationID,
@@ -98,6 +98,7 @@ func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, 
 	if err := s.store.BatchSave(ctx, records); err != nil {
 		return nil, err
 	}
+
 	return response, nil
 }
 

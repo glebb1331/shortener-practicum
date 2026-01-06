@@ -55,7 +55,6 @@ func (s *MemoryStorage) Ping(ctx context.Context) error {
 }
 
 func (s *MemoryStorage) BatchSave(ctx context.Context, records []Record) error {
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -63,7 +62,18 @@ func (s *MemoryStorage) BatchSave(ctx context.Context, records []Record) error {
 		if _, exists := s.urls[rec.ID]; exists {
 			continue
 		}
-		s.urls[rec.ID] = rec
+
+		exists := false
+		for _, existingRec := range s.urls {
+			if existingRec.OriginalURL == rec.OriginalURL {
+				exists = true
+				break
+			}
+		}
+
+		if !exists {
+			s.urls[rec.ID] = rec
+		}
 	}
 
 	return nil
