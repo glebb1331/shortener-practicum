@@ -23,22 +23,23 @@ func NewDatabaseStorage(db *sql.DB) (*DatabaseStorage, error) {
 }
 
 func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL, userID string) (string, error) {
-	query := `
-		INSERT INTO urls (id, original_url, user_id) 
-		VALUES ($1, $2, $3) 
-		ON CONFLICT (original_url) 
-		DO UPDATE SET original_url = EXCLUDED.original_url 
-		RETURNING id
-	`
+	existingID, err := s.GetByOriginalURL(ctx, originalURL)
+	if err == nil && existingID != "" {
+		return existingID, ErrURLExists
+	}
 
-	var existingID string
-	err := s.db.QueryRowContext(ctx, query, id, originalURL, userID).Scan(&existingID)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return "", err
 	}
 
-	if existingID != id {
-		return existingID, ErrURLExists
+	query := `INSERT INTO urls (id, original_url, user_id) VALUES ($1, $2, $3)`
+	_, err = s.db.ExecContext(ctx, query, id, originalURL, userID)
+	if err != nil {
+		existingID, err2 := s.GetByOriginalURL(ctx, originalURL)
+		if err2 == nil && existingID != "" {
+			return existingID, ErrURLExists
+		}
+		return "", err
 	}
 
 	return id, nil
@@ -83,43 +84,21 @@ func (s *DatabaseStorage) BatchSave(ctx context.Context, records []Record) error
 	}
 	defer tx.Rollback()
 
-	_, err = tx.ExecContext(ctx, `
-		CREATE TEMP TABLE temp_urls (
-			id TEXT PRIMARY KEY,
-			original_url TEXT UNIQUE,
-			user_id TEXT
-		) ON COMMIT DROP
-	`)
-	if err != nil {
-		return err
-	}
-
 	stmt, err := tx.PrepareContext(ctx, `
-		COPY temp_urls (id, original_url, user_id) FROM STDIN
-	`)
+        INSERT INTO urls (id, original_url, user_id) 
+        VALUES ($1, $2, $3)
+        ON CONFLICT (original_url) DO NOTHING
+    `)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	for _, rec := range records {
-		_, err = stmt.ExecContext(ctx, rec.ID, rec.OriginalURL, rec.UserID)
+	for _, record := range records {
+		_, err := stmt.ExecContext(ctx, record.ID, record.OriginalURL, record.UserID)
 		if err != nil {
 			return err
 		}
-	}
-
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO urls (id, original_url, user_id)
-		SELECT t.id, t.original_url, t.user_id
-		FROM temp_urls t
-		WHERE NOT EXISTS (
-			SELECT 1 FROM urls u WHERE u.original_url = t.original_url
-		)
-		ON CONFLICT (original_url) DO NOTHING
-	`)
-	if err != nil {
-		return err
 	}
 
 	return tx.Commit()

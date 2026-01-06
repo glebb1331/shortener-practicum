@@ -18,16 +18,20 @@ var migrations = []Migration{
 		Version: 1,
 		Name:    "create_urls_table",
 		Up: `
-            CREATE TABLE IF NOT EXISTS urls (
-                id TEXT PRIMARY KEY,
-                original_url TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE INDEX IF NOT EXISTS idx_urls_created_at ON urls(created_at);
-        `,
+        CREATE TABLE IF NOT EXISTS urls (
+            id TEXT PRIMARY KEY,
+            original_url TEXT NOT NULL UNIQUE,
+            user_id TEXT NOT NULL DEFAULT '',
+            is_deleted BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_urls_created_at ON urls(created_at);
+        CREATE INDEX IF NOT EXISTS idx_urls_user_id ON urls(user_id);
+        CREATE INDEX IF NOT EXISTS idx_urls_is_deleted ON urls(is_deleted);
+    `,
 		Down: `
-            DROP TABLE IF EXISTS urls;
-        `,
+        DROP TABLE IF EXISTS urls;
+    `,
 	},
 	{
 		Version: 2,

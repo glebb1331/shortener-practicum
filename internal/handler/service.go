@@ -9,7 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/glebb1331/shortener-practicum/internal/logger"
 	"github.com/glebb1331/shortener-practicum/internal/storage"
+	"go.uber.org/zap"
 )
 
 var ErrEmptyURL = errors.New("empty url")
@@ -67,6 +69,8 @@ func generateID(rnd *rand.Rand) string {
 }
 
 func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, userID string) ([]BatchResponseItem, error) {
+	logger.Log.Info("ShortenBatch called", zap.Int("count", len(urls)))
+
 	if len(urls) == 0 {
 		return nil, errors.New("empty urls")
 	}
@@ -95,10 +99,13 @@ func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, 
 		}
 	}
 
+	logger.Log.Info("Calling BatchSave", zap.Int("record_count", len(records)))
 	if err := s.store.BatchSave(ctx, records); err != nil {
+		logger.Log.Error("BatchSave failed", zap.Error(err))
 		return nil, err
 	}
 
+	logger.Log.Info("BatchSave succeeded")
 	return response, nil
 }
 

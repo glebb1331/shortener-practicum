@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/glebb1331/shortener-practicum/internal/logger"
 	"github.com/glebb1331/shortener-practicum/internal/storage"
+	"go.uber.org/zap"
 )
 
 type Handler struct {
@@ -156,8 +158,11 @@ func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json") // Устанавливаем заранее
+
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "content type must be application/json"})
 		return
 	}
 
@@ -165,32 +170,39 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 
 	userID := r.Header.Get("X-User-ID")
 	if userID == "" {
-		http.Error(w, "missing userID", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "missing userID"})
 		return
 	}
 
 	var batchRequests []BatchRequestItem
 	if err := json.NewDecoder(r.Body).Decode(&batchRequests); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON"})
 		return
 	}
 
 	if len(batchRequests) == 0 {
-		http.Error(w, "empty batch", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "empty batch"})
 		return
 	}
 
 	result, err := h.service.ShortenBatch(context.Background(), batchRequests, userID)
 	if err != nil {
 		if errors.Is(err, ErrEmptyURL) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
+
+		logger.Log.Error("ShortenBatch error", zap.Error(err))
+
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(result)
 }
