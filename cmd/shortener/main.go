@@ -48,6 +48,6 @@ func main() {
 	r.Post("/", h.ShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)
 
-	log.Println("Сервер запущен", cfg.ServerAddress)
+	log.Println("сервер запущен", cfg.ServerAddress)
 	log.Fatal(http.ListenAndServe(cfg.ServerAddress, r))
 }
