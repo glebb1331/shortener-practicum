@@ -20,11 +20,10 @@ type URLRecord struct {
 }
 
 type FileStorage struct {
-	mu           sync.RWMutex
-	records      []URLRecord
-	index        map[string]string
-	originalURLs map[string]string
-	filePath     string
+	mu       sync.RWMutex
+	records  []URLRecord
+	index    map[string]string
+	filePath string
 }
 
 func NewFileStorage(filePath string) (*FileStorage, error) {
@@ -34,10 +33,9 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 	}
 
 	s := &FileStorage{
-		records:      []URLRecord{},
-		index:        make(map[string]string),
-		originalURLs: make(map[string]string),
-		filePath:     filePath,
+		records:  []URLRecord{},
+		index:    make(map[string]string),
+		filePath: filePath,
 	}
 
 	if err := s.load(); err != nil {
@@ -51,8 +49,10 @@ func (s *FileStorage) Save(ctx context.Context, id, originalURL, userID string) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if existingID, exists := s.originalURLs[originalURL]; exists {
-		return existingID, ErrURLExists
+	for _, r := range s.records {
+		if r.OriginalURL == originalURL {
+			return r.ShortURL, ErrURLExists
+		}
 	}
 
 	record := URLRecord{
@@ -65,7 +65,6 @@ func (s *FileStorage) Save(ctx context.Context, id, originalURL, userID string) 
 
 	s.records = append(s.records, record)
 	s.index[id] = originalURL
-	s.originalURLs[originalURL] = id
 
 	return id, s.save()
 }
@@ -100,7 +99,6 @@ func (s *FileStorage) load() error {
 
 	for _, r := range s.records {
 		s.index[r.ShortURL] = r.OriginalURL
-		s.originalURLs[r.OriginalURL] = r.ShortURL
 	}
 
 	return nil
@@ -121,27 +119,20 @@ func (s *FileStorage) BatchSave(ctx context.Context, records []Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, rec := range records {
-		if _, exists := s.index[rec.ID]; exists {
-			continue
-		}
-
-		if existingID, exists := s.originalURLs[rec.OriginalURL]; exists {
-			s.index[rec.ID] = existingID
+	for _, r := range records {
+		if _, exists := s.index[r.ID]; exists {
 			continue
 		}
 
 		record := URLRecord{
 			UUID:        strconv.Itoa(len(s.records) + 1),
-			ShortURL:    rec.ID,
-			OriginalURL: rec.OriginalURL,
-			UserID:      rec.UserID,
+			ShortURL:    r.ID,
+			OriginalURL: r.OriginalURL,
+			UserID:      r.UserID,
 			CreatedAt:   time.Now().Format(time.RFC3339),
 		}
-
 		s.records = append(s.records, record)
-		s.index[rec.ID] = rec.OriginalURL
-		s.originalURLs[rec.OriginalURL] = rec.ID
+		s.index[r.ID] = r.OriginalURL
 	}
 
 	return s.save()

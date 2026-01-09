@@ -6,6 +6,8 @@ import (
 	"errors"
 
 	"github.com/glebb1331/shortener-practicum/migrations"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type DatabaseStorage struct {
@@ -14,40 +16,34 @@ type DatabaseStorage struct {
 
 func NewDatabaseStorage(db *sql.DB) (*DatabaseStorage, error) {
 	s := &DatabaseStorage{db: db}
-
 	if err := migrations.RunMigrations(context.Background(), db); err != nil {
 		return nil, err
 	}
-
 	return s, nil
 }
 
 func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL, userID string) (string, error) {
-	existingID, err := s.GetByOriginalURL(ctx, originalURL)
-	if err == nil && existingID != "" {
-		return existingID, ErrURLExists
-	}
+	query := `
+		INSERT INTO urls (id, original_url, user_id) 
+		VALUES ($1, $2, $3)
+		ON CONFLICT (original_url) DO UPDATE SET original_url = EXCLUDED.original_url
+		RETURNING id`
 
-	if err != nil && !errors.Is(err, ErrNotFound) {
-		return "", err
-	}
-
-	query := `INSERT INTO urls (id, original_url, user_id) VALUES ($1, $2, $3)`
-	_, err = s.db.ExecContext(ctx, query, id, originalURL, userID)
+	var actualID string
+	err := s.db.QueryRowContext(ctx, query, id, originalURL, userID).Scan(&actualID)
 	if err != nil {
-		existingID, err2 := s.GetByOriginalURL(ctx, originalURL)
-		if err2 == nil && existingID != "" {
-			return existingID, ErrURLExists
-		}
 		return "", err
 	}
 
-	return id, nil
+	if actualID != id {
+		return actualID, ErrURLExists
+	}
+
+	return actualID, nil
 }
 
 func (s *DatabaseStorage) Get(ctx context.Context, id string) (string, error) {
 	query := `SELECT original_url, is_deleted FROM urls WHERE id = $1`
-
 	var originalURL string
 	var isDeleted bool
 	err := s.db.QueryRowContext(ctx, query, id).Scan(&originalURL, &isDeleted)
@@ -57,11 +53,9 @@ func (s *DatabaseStorage) Get(ctx context.Context, id string) (string, error) {
 		}
 		return "", err
 	}
-
 	if isDeleted {
 		return "", ErrURLDeleted
 	}
-
 	return originalURL, nil
 }
 
@@ -74,10 +68,6 @@ func (s *DatabaseStorage) Ping(ctx context.Context) error {
 }
 
 func (s *DatabaseStorage) BatchSave(ctx context.Context, records []Record) error {
-	if len(records) == 0 {
-		return nil
-	}
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -85,18 +75,20 @@ func (s *DatabaseStorage) BatchSave(ctx context.Context, records []Record) error
 	defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx, `
-        INSERT INTO urls (id, original_url, user_id) 
-        VALUES ($1, $2, $3)
-        ON CONFLICT (original_url) DO NOTHING
-    `)
+		INSERT INTO urls (id, original_url, user_id) 
+		VALUES ($1, $2, $3) 
+		ON CONFLICT (original_url) DO NOTHING`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	for _, record := range records {
-		_, err := stmt.ExecContext(ctx, record.ID, record.OriginalURL, record.UserID)
-		if err != nil {
+		if _, err := stmt.ExecContext(ctx, record.ID, record.OriginalURL, record.UserID); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+				continue
+			}
 			return err
 		}
 	}
