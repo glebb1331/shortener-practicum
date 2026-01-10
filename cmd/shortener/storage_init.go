@@ -13,17 +13,16 @@ func initStorage(cfg *config.Config) storage.Storage {
 	if cfg.DatabaseDSN != "" {
 		db, err := sql.Open("pgx", cfg.DatabaseDSN)
 		if err != nil {
-			log.Printf("Failed to open database: %v", err)
-		} else {
-			store, err := storage.NewDatabaseStorage(db)
-			if err != nil {
-				log.Printf("Failed to init database storage: %v", err)
-				db.Close()
-			} else {
-				log.Println("Using PostgreSQL storage")
-				return store
-			}
+			log.Fatal("Database connection error:", err)
 		}
+
+		store, err := storage.NewDatabaseStorage(db)
+		if err != nil {
+			log.Fatal("Database migration error:", err)
+		}
+
+		log.Println("Using PostgreSQL storage")
+		return store
 	}
 
 	if cfg.FileStoragePath != "" {

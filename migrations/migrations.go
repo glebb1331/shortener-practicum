@@ -49,25 +49,29 @@ var migrations = []Migration{
 		Version: 3,
 		Name:    "add_user_id_to_urls",
 		Up: `
-            ALTER TABLE urls ADD COLUMN user_id TEXT NOT NULL DEFAULT '';
-            CREATE INDEX IF NOT EXISTS idx_urls_user_id ON urls(user_id);
-        `,
-		Down: `
-            DROP INDEX IF EXISTS idx_urls_user_id;
-            ALTER TABLE urls DROP COLUMN user_id;
-        `,
+        DO $$ 
+        BEGIN 
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                           WHERE table_name='urls' AND column_name='user_id') THEN
+                ALTER TABLE urls ADD COLUMN user_id TEXT NOT NULL DEFAULT '';
+            END IF;
+        END $$;
+        CREATE INDEX IF NOT EXISTS idx_urls_user_id ON urls(user_id);
+    `,
 	},
 	{
 		Version: 4,
 		Name:    "add_is_deleted_to_urls",
 		Up: `
-            ALTER TABLE urls ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE;
-            CREATE INDEX IF NOT EXISTS idx_urls_is_deleted ON urls(is_deleted);
-        `,
-		Down: `
-            DROP INDEX IF EXISTS idx_urls_is_deleted;
-            ALTER TABLE urls DROP COLUMN is_deleted;
-        `,
+        DO $$ 
+        BEGIN 
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                           WHERE table_name='urls' AND column_name='is_deleted') THEN
+                ALTER TABLE urls ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE;
+            END IF;
+        END $$;
+        CREATE INDEX IF NOT EXISTS idx_urls_is_deleted ON urls(is_deleted);
+    `,
 	},
 }
 
