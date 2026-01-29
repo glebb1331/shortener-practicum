@@ -30,6 +30,11 @@ type BatchResponseItem struct {
 
 type BatchResponse []BatchResponseItem
 
+type UserURLResponse struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
 func NewHandler(baseURL string, store storage.Storage) (*Handler, error) {
 	service := NewURLService(store, baseURL)
 
@@ -266,22 +271,18 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := make([]map[string]string, 0, len(records))
+	resp := make([]UserURLResponse, 0, len(records))
 	for _, rec := range records {
 		shortURL, err := url.JoinPath(h.service.BaseURL(), rec.ID)
 		if err != nil {
-			logger.Log.Error("Internal server error",
-				zap.Error(err),
-				zap.String("baseURL", h.service.BaseURL()),
-				zap.String("id", rec.ID),
-			)
+			logger.Log.Error("Internal server error", zap.Error(err))
 			continue
 		}
-		resp = append(resp, map[string]string{
-			"shortURL":    shortURL,
-			"originalURL": rec.OriginalURL,
-		})
 
+		resp = append(resp, UserURLResponse{
+			ShortURL:    shortURL,
+			OriginalURL: rec.OriginalURL,
+		})
 	}
 
 	if len(resp) == 0 && len(records) > 0 {
