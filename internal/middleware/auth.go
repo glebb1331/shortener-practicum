@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/glebb1331/shortener-practicum/internal/logger"
 	"github.com/golang-jwt/jwt/v4"
+	"go.uber.org/zap"
 )
 
 const cookieName = "token"
@@ -19,14 +21,13 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func generateUserID() string {
+func generateUserID() (string, error) {
 	b := make([]byte, 16)
 	_, err := rand.Read(b)
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
-		return ""
+		return "", fmt.Errorf("failed to generate secure user ID: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
 func createToken(userID string) (string, error) {
@@ -57,10 +58,11 @@ func WithAuth(h http.Handler) http.Handler {
 
 		c, err := r.Cookie(cookieName)
 		if err != nil {
-			userID := generateUserID()
+			userID, err := generateUserID()
 			tokenStr, err = createToken(userID)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				logger.Log.Error("Failed to generate user ID", zap.Error(err))
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				return
 			}
 

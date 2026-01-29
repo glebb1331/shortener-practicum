@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 
 	"github.com/glebb1331/shortener-practicum/internal/config"
@@ -9,32 +10,28 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-func initStorage(cfg *config.Config) storage.Storage {
+func initStorage(cfg *config.Config) (storage.Storage, error) {
 	if cfg.DatabaseDSN != "" {
 		db, err := sql.Open("pgx", cfg.DatabaseDSN)
 		if err != nil {
-			log.Fatal("Database connection error:", err)
+			return nil, fmt.Errorf("database connection error: %w", err)
 		}
 
 		store, err := storage.NewDatabaseStorage(db)
 		if err != nil {
-			log.Fatal("Database migration error:", err)
+			return nil, fmt.Errorf("database migration error: %w", err)
 		}
 
-		log.Println("Using PostgreSQL storage")
-		return store
+		return store, nil
 	}
 
 	if cfg.FileStoragePath != "" {
 		store, err := storage.NewFileStorage(cfg.FileStoragePath)
 		if err != nil {
 			log.Printf("Failed to init file storage: %v", err)
-		} else {
-			log.Printf("Using file storage at: %s", cfg.FileStoragePath)
-			return store
 		}
+		return store, nil
 	}
 
-	log.Println("Using in-memory storage")
-	return storage.NewMemoryStorage()
+	return storage.NewMemoryStorage(), nil
 }

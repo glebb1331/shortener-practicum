@@ -1,11 +1,12 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/glebb1331/shortener-practicum/internal/logger"
@@ -57,10 +58,10 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	result, err := h.service.Shorten(context.Background(), string(body), userID)
+	result, err := h.service.Shorten(r.Context(), string(body), userID)
 	if err != nil {
 		if errors.Is(err, ErrEmptyURL) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 		if errors.Is(err, storage.ErrURLExists) {
@@ -69,7 +70,13 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(result))
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logger.Log.Error("Internal server error",
+			zap.Error(err),
+			zap.String("userID", userID),
+			zap.String("method", r.Method),
+		)
+
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -84,14 +91,22 @@ func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	originalURL, err := h.service.Resolve(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			http.Error(w, "not found", http.StatusNotFound)
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 			return
 		}
 		if errors.Is(err, storage.ErrURLDeleted) {
-			http.Error(w, "gone", http.StatusGone)
+			http.Error(w, http.StatusText(http.StatusGone), http.StatusGone)
 			return
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
+
+		logger.Log.Error("Internal server error",
+			zap.Error(err),
+			zap.String("id", id),
+			zap.String("method", r.Method),
+			zap.String("path", r.URL.Path),
+		)
+
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -114,7 +129,7 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID := r.Header.Get("X-User-ID")
 	if userID == "" {
-		http.Error(w, "Not authorized", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
@@ -126,10 +141,10 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.service.Shorten(context.Background(), req.URL, userID)
+	result, err := h.service.Shorten(r.Context(), req.URL, userID)
 	if err != nil {
 		if errors.Is(err, ErrEmptyURL) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 		if errors.Is(err, storage.ErrURLExists) {
@@ -138,7 +153,14 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(ShortenResponse{Result: result})
 			return
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
+
+		logger.Log.Error("Internal server error",
+			zap.Error(err),
+			zap.String("userID", userID),
+			zap.String("method", r.Method),
+		)
+
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -151,7 +173,14 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.Ping(r.Context()); err != nil {
-		http.Error(w, "storage unavailable", http.StatusInternalServerError)
+
+		logger.Log.Error("Storage ping failed",
+			zap.Error(err),
+			zap.String("method", r.Method),
+			zap.String("endpoint", "/ping"),
+		)
+
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -188,18 +217,23 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	result, err := h.service.ShortenBatch(context.Background(), batchRequests, userID)
+	result, err := h.service.ShortenBatch(r.Context(), batchRequests, userID)
 	if err != nil {
 		if errors.Is(err, ErrEmptyURL) {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": http.StatusText(http.StatusBadRequest)})
 			return
 		}
 
-		logger.Log.Error("ShortenBatch error", zap.Error(err))
+		logger.Log.Error("Internal server error",
+			zap.Error(err),
+			zap.String("userID", userID),
+			zap.String("batchSize", strconv.Itoa(len(batchRequests))),
+			zap.String("method", r.Method),
+		)
 
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
+		json.NewEncoder(w).Encode(map[string]string{"error": http.StatusText(http.StatusInternalServerError)})
 		return
 	}
 
@@ -210,13 +244,20 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("X-User-ID")
 	if userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
-	records, err := h.service.GetByUserID(context.Background(), userID)
+	records, err := h.service.GetByUserID(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+
+		logger.Log.Error("Internal server error",
+			zap.Error(err),
+			zap.String("userID", userID),
+			zap.String("method", r.Method),
+		)
+
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -227,10 +268,25 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]map[string]string, 0, len(records))
 	for _, rec := range records {
+		shortURL, err := url.JoinPath(h.service.BaseURL(), rec.ID)
+		if err != nil {
+			logger.Log.Error("Internal server error",
+				zap.Error(err),
+				zap.String("baseURL", h.service.BaseURL()),
+				zap.String("id", rec.ID),
+			)
+			continue
+		}
 		resp = append(resp, map[string]string{
-			"short_url":    h.service.BaseURL() + "/" + rec.ID,
-			"original_url": rec.OriginalURL,
+			"shortURL":    shortURL,
+			"originalURL": rec.OriginalURL,
 		})
+
+	}
+
+	if len(resp) == 0 && len(records) > 0 {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -250,7 +306,7 @@ func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
 
 	userID := r.Header.Get("X-User-ID")
 	if userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
@@ -269,10 +325,18 @@ func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.service.DeleteURLs(r.Context(), userID, ids); err != nil {
 		if errors.Is(err, storage.ErrNotOwner) {
-			http.Error(w, "user is not owner of some urls", http.StatusForbidden)
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
+
+		logger.Log.Error("Internal server error",
+			zap.Error(err),
+			zap.String("userID", userID),
+			zap.Strings("ids", ids),
+			zap.String("method", r.Method),
+		)
+
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 

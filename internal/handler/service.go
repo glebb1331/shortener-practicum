@@ -3,8 +3,10 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"math/rand"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -31,8 +33,8 @@ func NewURLService(store storage.Storage, baseURL string) *URLService {
 	}
 }
 
-func (s *URLService) Shorten(ctx context.Context, url, userID string) (string, error) {
-	if strings.TrimSpace(url) == "" {
+func (s *URLService) Shorten(ctx context.Context, originalURL, userID string) (string, error) {
+	if strings.TrimSpace(originalURL) == "" {
 		return "", ErrEmptyURL
 	}
 
@@ -40,15 +42,24 @@ func (s *URLService) Shorten(ctx context.Context, url, userID string) (string, e
 	id := generateID(s.rnd)
 	s.mu.Unlock()
 
-	storedID, err := s.store.Save(ctx, id, url, userID)
+	storedID, err := s.store.Save(ctx, id, originalURL, userID)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLExists) {
-			return s.baseURL + "/" + storedID, storage.ErrURLExists
+			shortURL, err := url.JoinPath(s.baseURL, storedID)
+			if err != nil {
+				return "", fmt.Errorf("failed to create short URL: %w", err)
+			}
+			return shortURL, storage.ErrURLExists
 		}
 		return "", err
 	}
 
-	return s.baseURL + "/" + storedID, nil
+	shortURL, err := url.JoinPath(s.baseURL, storedID)
+	if err != nil {
+		return "", fmt.Errorf("failed to create short URL: %w", err)
+	}
+
+	return shortURL, nil
 }
 
 func (s *URLService) Resolve(ctx context.Context, id string) (string, error) {
@@ -87,15 +98,19 @@ func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, 
 		id := generateID(s.rnd)
 		s.mu.Unlock()
 
-		records = append(records, storage.Record{
-			ID:          id,
-			OriginalURL: item.OriginalURL,
-			UserID:      userID,
-		})
+		shortURL, err := url.JoinPath(s.baseURL, id)
+		if err != nil {
+			logger.Log.Error("Failed to create short URL in batch",
+				zap.Error(err),
+				zap.String("baseURL", s.baseURL),
+				zap.String("id", id),
+			)
+			return nil, fmt.Errorf("failed to create short URL: %w", err)
+		}
 
 		response[i] = BatchResponseItem{
 			CorrelationID: item.CorrelationID,
-			ShortURL:      s.baseURL + "/" + id,
+			ShortURL:      shortURL,
 		}
 	}
 
@@ -136,40 +151,39 @@ func (s *URLService) DeleteURLs(ctx context.Context, userID string, ids []string
 			if err := s.store.DeleteURLs(bgCtx, userID, batch); err != nil {
 				log.Printf("Error deleting URLs batch: %v", err)
 			}
-
-			time.Sleep(10 * time.Millisecond)
 		}
 	}()
 
 	return nil
 }
 
-func (s *URLService) asyncDeleteURLs(ctx context.Context, userID string, ids []string) {
-	batchSize := 100
-	idChannels := make([]chan []string, 0)
+/*
+	func (s *URLService) asyncDeleteURLs(ctx context.Context, userID string, ids []string) {
+		batchSize := 100
+		idChannels := make([]chan []string, 0)
 
-	for i := 0; i < len(ids); i += batchSize {
-		end := i + batchSize
-		if end > len(ids) {
-			end = len(ids)
+		for i := 0; i < len(ids); i += batchSize {
+			end := i + batchSize
+			if end > len(ids) {
+				end = len(ids)
+			}
+			batch := ids[i:end]
+
+			ch := make(chan []string, 1)
+			ch <- batch
+			close(ch)
+			idChannels = append(idChannels, ch)
 		}
-		batch := ids[i:end]
 
-		ch := make(chan []string, 1)
-		ch <- batch
-		close(ch)
-		idChannels = append(idChannels, ch)
+		resultChan := s.fanInDelete(ctx, userID, idChannels)
+
+		go func() {
+			for err := range resultChan {
+				_ = err
+			}
+		}()
 	}
-
-	resultChan := s.fanInDelete(ctx, userID, idChannels)
-
-	go func() {
-		for err := range resultChan {
-			_ = err
-		}
-	}()
-}
-
+*/
 func (s *URLService) fanInDelete(ctx context.Context, userID string, channels []chan []string) <-chan error {
 	out := make(chan error)
 	var wg sync.WaitGroup

@@ -10,6 +10,7 @@ import (
 	"github.com/glebb1331/shortener-practicum/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -24,7 +25,10 @@ func main() {
 	}
 	defer logger.Log.Sync()
 
-	store := initStorage(cfg)
+	store, err := initStorage(cfg)
+	if err != nil {
+		logger.Log.Fatal("Failed to initialize logger")
+	}
 	defer store.Close()
 
 	r := chi.NewRouter()
@@ -48,6 +52,9 @@ func main() {
 	r.Post("/", h.ShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)
 
-	log.Println("сервер запущен", cfg.ServerAddress)
+	logger.Log.Info(
+		"server started",
+		zap.String("address", cfg.ServerAddress),
+	)
 	log.Fatal(http.ListenAndServe(cfg.ServerAddress, r))
 }

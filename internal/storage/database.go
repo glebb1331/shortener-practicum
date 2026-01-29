@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/glebb1331/shortener-practicum/migrations"
 	"github.com/jackc/pgerrcode"
@@ -16,7 +17,7 @@ type DatabaseStorage struct {
 
 func NewDatabaseStorage(db *sql.DB) (*DatabaseStorage, error) {
 	s := &DatabaseStorage{db: db}
-	if err := migrations.RunMigrations(context.Background(), db); err != nil {
+	if err := migrations.RunMigrations(db); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -32,7 +33,7 @@ func (s *DatabaseStorage) Save(ctx context.Context, id, originalURL, userID stri
 	var actualID string
 	err := s.db.QueryRowContext(ctx, query, id, originalURL, userID).Scan(&actualID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to save URL: %w", err)
 	}
 
 	if actualID != id {
@@ -51,7 +52,7 @@ func (s *DatabaseStorage) Get(ctx context.Context, id string) (string, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrNotFound
 		}
-		return "", err
+		return "", fmt.Errorf("failed to get URL: %w", err)
 	}
 	if isDeleted {
 		return "", ErrURLDeleted
@@ -64,7 +65,10 @@ func (s *DatabaseStorage) Close() error {
 }
 
 func (s *DatabaseStorage) Ping(ctx context.Context) error {
-	return s.db.PingContext(ctx)
+	if err := s.db.PingContext(ctx); err != nil {
+		return fmt.Errorf("database ping failed: %w", err)
+	}
+	return nil
 }
 
 func (s *DatabaseStorage) BatchSave(ctx context.Context, records []Record) error {
@@ -89,7 +93,7 @@ func (s *DatabaseStorage) BatchSave(ctx context.Context, records []Record) error
 			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
 				continue
 			}
-			return err
+			return fmt.Errorf("failed to execute statement: %w", err)
 		}
 	}
 
@@ -104,7 +108,7 @@ func (s *DatabaseStorage) GetByOriginalURL(ctx context.Context, originalURL stri
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrNotFound
 		}
-		return "", err
+		return "", fmt.Errorf("failed to get ID by original URL: %w", err)
 	}
 	return id, nil
 }
@@ -115,7 +119,7 @@ func (s *DatabaseStorage) GetByUserID(ctx context.Context, userID string) ([]Rec
               ORDER BY created_at DESC`
 	rows, err := s.db.QueryContext(ctx, query, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query user URLs: %w", err)
 	}
 	defer rows.Close()
 
@@ -123,13 +127,13 @@ func (s *DatabaseStorage) GetByUserID(ctx context.Context, userID string) ([]Rec
 	for rows.Next() {
 		var rec Record
 		if err := rows.Scan(&rec.ID, &rec.OriginalURL, &rec.UserID, &rec.IsDeleted); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan record: %w", err)
 		}
 		records = append(records, rec)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
 
 	return records, nil
@@ -144,7 +148,10 @@ func (s *DatabaseStorage) DeleteURLs(ctx context.Context, userID string, ids []s
               WHERE user_id = $1 AND id = ANY($2)`
 
 	_, err := s.db.ExecContext(ctx, query, userID, ids)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to delete URLs: %w", err)
+	}
+	return nil
 }
 
 func (s *DatabaseStorage) GetBatchByUserID(ctx context.Context, userID string, ids []string) ([]Record, error) {
@@ -158,7 +165,7 @@ func (s *DatabaseStorage) GetBatchByUserID(ctx context.Context, userID string, i
 
 	rows, err := s.db.QueryContext(ctx, query, userID, ids)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query batch by user ID: %w", err)
 	}
 	defer rows.Close()
 
@@ -166,13 +173,13 @@ func (s *DatabaseStorage) GetBatchByUserID(ctx context.Context, userID string, i
 	for rows.Next() {
 		var rec Record
 		if err := rows.Scan(&rec.ID, &rec.OriginalURL, &rec.UserID, &rec.IsDeleted); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan batch record: %w", err)
 		}
 		records = append(records, rec)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error iterating batch rows: %w", err)
 	}
 
 	return records, nil
