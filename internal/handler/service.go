@@ -98,6 +98,12 @@ func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, 
 		id := generateID(s.rnd)
 		s.mu.Unlock()
 
+		records = append(records, storage.Record{
+			ID:          id,
+			OriginalURL: item.OriginalURL,
+			UserID:      userID,
+		})
+
 		shortURL, err := url.JoinPath(s.baseURL, id)
 		if err != nil {
 			logger.Log.Error("Failed to create short URL in batch",
