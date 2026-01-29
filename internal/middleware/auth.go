@@ -59,7 +59,6 @@ func WithAuth(h http.Handler) http.Handler {
 		c, err := r.Cookie(cookieName)
 		if err != nil {
 			userID, err := generateUserID()
-			tokenStr, err = createToken(userID)
 			if err != nil {
 				logger.Log.Error("Failed to generate user ID", zap.Error(err))
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
