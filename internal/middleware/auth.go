@@ -64,6 +64,12 @@ func WithAuth(h http.Handler) http.Handler {
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				return
 			}
+			tokenStr, err = createToken(userID)
+			if err != nil {
+				logger.Log.Error("Failed to create token", zap.Error(err))
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
 
 			http.SetCookie(w, &http.Cookie{
 				Name:     cookieName,
