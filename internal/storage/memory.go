@@ -7,26 +7,26 @@ import (
 
 type MemoryStorage struct {
 	mu   sync.RWMutex
-	urls map[string]string
+	urls map[string]Record
 }
 
 func NewMemoryStorage() *MemoryStorage {
 	return &MemoryStorage{
-		urls: make(map[string]string),
+		urls: make(map[string]Record),
 	}
 }
 
-func (s *MemoryStorage) Save(ctx context.Context, id, originalURL string) (string, error) {
+func (s *MemoryStorage) Save(ctx context.Context, id, originalURL, userID string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for existingID, url := range s.urls {
-		if url == originalURL {
-			return existingID, ErrURLExists
+	for _, rec := range s.urls {
+		if rec.OriginalURL == originalURL {
+			return rec.ID, ErrURLExists
 		}
 	}
 
-	s.urls[id] = originalURL
+	s.urls[id] = Record{ID: id, OriginalURL: originalURL, UserID: userID}
 	return id, nil
 }
 
@@ -34,11 +34,16 @@ func (s *MemoryStorage) Get(ctx context.Context, id string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	url, ok := s.urls[id]
+	rec, ok := s.urls[id]
 	if !ok {
 		return "", ErrNotFound
 	}
-	return url, nil
+
+	if rec.IsDeleted {
+		return "", ErrURLDeleted
+	}
+
+	return rec.OriginalURL, nil
 }
 
 func (s *MemoryStorage) Close() error {
@@ -49,16 +54,26 @@ func (s *MemoryStorage) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (s *MemoryStorage) BatchSave(ctx context.Context, records []struct {
-	ID          string
-	OriginalURL string
-}) error {
-
+func (s *MemoryStorage) BatchSave(ctx context.Context, records []Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, record := range records {
-		s.urls[record.ID] = record.OriginalURL
+	for _, rec := range records {
+		if _, exists := s.urls[rec.ID]; exists {
+			continue
+		}
+
+		exists := false
+		for _, existingRec := range s.urls {
+			if existingRec.OriginalURL == rec.OriginalURL {
+				exists = true
+				break
+			}
+		}
+
+		if !exists {
+			s.urls[rec.ID] = rec
+		}
 	}
 
 	return nil
@@ -68,10 +83,50 @@ func (s *MemoryStorage) GetByOriginalURL(ctx context.Context, originalURL string
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for id, url := range s.urls {
-		if url == originalURL {
-			return id, nil
+	for _, rec := range s.urls {
+		if rec.OriginalURL == originalURL {
+			return rec.ID, nil
 		}
 	}
 	return "", ErrNotFound
+}
+
+func (s *MemoryStorage) GetByUserID(ctx context.Context, userID string) ([]Record, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []Record
+	for _, rec := range s.urls {
+		if rec.UserID == userID {
+			result = append(result, rec)
+		}
+	}
+
+	return result, nil
+}
+
+func (s *MemoryStorage) DeleteURLs(ctx context.Context, userID string, ids []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, id := range ids {
+		if rec, ok := s.urls[id]; ok && rec.UserID == userID {
+			rec.IsDeleted = true
+			s.urls[id] = rec
+		}
+	}
+	return nil
+}
+
+func (s *MemoryStorage) GetBatchByUserID(ctx context.Context, userID string, ids []string) ([]Record, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var records []Record
+	for _, id := range ids {
+		if rec, ok := s.urls[id]; ok && rec.UserID == userID {
+			records = append(records, rec)
+		}
+	}
+	return records, nil
 }

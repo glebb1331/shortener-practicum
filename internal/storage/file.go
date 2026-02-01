@@ -7,12 +7,16 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type URLRecord struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      string `json:"user_id"`
+	CreatedAt   string `json:"created_at"`
+	IsDeleted   bool   `json:"is_deleted"`
 }
 
 type FileStorage struct {
@@ -41,11 +45,10 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 	return s, nil
 }
 
-func (s *FileStorage) Save(ctx context.Context, id, originalURL string) (string, error) {
+func (s *FileStorage) Save(ctx context.Context, id, originalURL, userID string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// проверка на дубликат
 	for _, r := range s.records {
 		if r.OriginalURL == originalURL {
 			return r.ShortURL, ErrURLExists
@@ -56,6 +59,8 @@ func (s *FileStorage) Save(ctx context.Context, id, originalURL string) (string,
 		UUID:        strconv.Itoa(len(s.records) + 1),
 		ShortURL:    id,
 		OriginalURL: originalURL,
+		UserID:      userID,
+		CreatedAt:   time.Now().Format(time.RFC3339),
 	}
 
 	s.records = append(s.records, record)
@@ -68,11 +73,15 @@ func (s *FileStorage) Get(ctx context.Context, id string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	url, ok := s.index[id]
-	if !ok {
-		return "", ErrNotFound
+	for _, r := range s.records {
+		if r.ShortURL == id {
+			if r.IsDeleted {
+				return "", ErrURLDeleted
+			}
+			return r.OriginalURL, nil
+		}
 	}
-	return url, nil
+	return "", ErrNotFound
 }
 
 func (s *FileStorage) load() error {
@@ -106,16 +115,27 @@ func (s *FileStorage) save() error {
 func (s *FileStorage) Close() error                   { return nil }
 func (s *FileStorage) Ping(ctx context.Context) error { return nil }
 
-func (s *FileStorage) BatchSave(ctx context.Context, records []struct {
-	ID          string
-	OriginalURL string
-}) error {
+func (s *FileStorage) BatchSave(ctx context.Context, records []Record) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for _, r := range records {
-		if _, err := s.Save(ctx, r.ID, r.OriginalURL); err != nil {
-			return err
+		if _, exists := s.index[r.ID]; exists {
+			continue
 		}
+
+		record := URLRecord{
+			UUID:        strconv.Itoa(len(s.records) + 1),
+			ShortURL:    r.ID,
+			OriginalURL: r.OriginalURL,
+			UserID:      r.UserID,
+			CreatedAt:   time.Now().Format(time.RFC3339),
+		}
+		s.records = append(s.records, record)
+		s.index[r.ID] = r.OriginalURL
 	}
-	return nil
+
+	return s.save()
 }
 
 func (s *FileStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
@@ -128,4 +148,62 @@ func (s *FileStorage) GetByOriginalURL(ctx context.Context, originalURL string) 
 		}
 	}
 	return "", ErrNotFound
+}
+
+func (s *FileStorage) GetByUserID(ctx context.Context, userID string) ([]Record, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []Record
+	for _, r := range s.records {
+		if r.UserID == userID {
+			result = append(result, Record{
+				ID:          r.ShortURL,
+				OriginalURL: r.OriginalURL,
+				UserID:      r.UserID,
+			})
+		}
+	}
+
+	return result, nil
+}
+
+func (s *FileStorage) DeleteURLs(ctx context.Context, userID string, ids []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	deleted := false
+	for i := range s.records {
+		for _, id := range ids {
+			if s.records[i].ShortURL == id && s.records[i].UserID == userID {
+				s.records[i].IsDeleted = true
+				deleted = true
+			}
+		}
+	}
+
+	if deleted {
+		return s.save()
+	}
+	return nil
+}
+
+func (s *FileStorage) GetBatchByUserID(ctx context.Context, userID string, ids []string) ([]Record, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var records []Record
+	for _, r := range s.records {
+		for _, id := range ids {
+			if r.ShortURL == id && r.UserID == userID {
+				records = append(records, Record{
+					ID:          r.ShortURL,
+					OriginalURL: r.OriginalURL,
+					UserID:      r.UserID,
+					IsDeleted:   r.IsDeleted,
+				})
+			}
+		}
+	}
+	return records, nil
 }

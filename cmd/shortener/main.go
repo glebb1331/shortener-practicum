@@ -10,6 +10,7 @@ import (
 	"github.com/glebb1331/shortener-practicum/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -24,13 +25,17 @@ func main() {
 	}
 	defer logger.Log.Sync()
 
-	store := initStorage(cfg)
+	store, err := initStorage(cfg)
+	if err != nil {
+		logger.Log.Fatal("Failed to initialize logger")
+	}
 	defer store.Close()
 
 	r := chi.NewRouter()
 
 	r.Use(middleware.WithLogging)
 	r.Use(middleware.WithGzip)
+	r.Use(middleware.WithAuth)
 
 	h, err := handler.NewHandler(cfg.BaseURL, store)
 	if err != nil {
@@ -41,17 +46,15 @@ func main() {
 	r.Post("/api/shorten", h.APIShortenHandler)
 	r.Post("/api/shorten/batch", h.APIShortenBatchHandler)
 
-	// Эндпоинт для истории URL пользователя
-	r.Get("/api/user/urls", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		// Если данных нет, по спецификации часто требуется 204 No Content
-		w.WriteHeader(http.StatusNoContent)
-	})
+	r.Get("/api/user/urls", h.GetUserURLs)
+	r.Delete("/api/user/urls", h.DeleteUserURLs)
 
-	// В самом конце — жадный поиск по ID
 	r.Post("/", h.ShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)
 
-	log.Println("Сервер запущен", cfg.ServerAddress)
+	logger.Log.Info(
+		"server started",
+		zap.String("address", cfg.ServerAddress),
+	)
 	log.Fatal(http.ListenAndServe(cfg.ServerAddress, r))
 }

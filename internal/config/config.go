@@ -16,15 +16,15 @@ type Config struct {
 func NewConfig() (*Config, error) {
 	cfg := &Config{}
 
+	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "server address")
+	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "base url")
+	flag.StringVar(&cfg.FileStoragePath, "f", "storage.json", "file storage path")
+	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database DSN")
+	flag.Parse()
+
 	if err := cleanenv.ReadEnv(cfg); err != nil {
 		return nil, err
 	}
-
-	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "server address")
-	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "base url")
-	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "file storage path")
-	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database DSN")
-	flag.Parse()
 
 	return cfg, nil
 }

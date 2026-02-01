@@ -23,7 +23,10 @@ func setupRouter() (*chi.Mux, *Handler) {
 	if err != nil {
 		panic(err)
 	}
+
 	r := chi.NewRouter()
+	r.Use(middleware.WithAuth)
+
 	r.Post("/", h.ShortenHandler)
 	r.Post("/api/shorten", h.APIShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)
@@ -36,6 +39,8 @@ func TestShortenHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	r := chi.NewRouter()
+	r.Use(middleware.WithAuth)
+
 	r.Post("/", h.ShortenHandler)
 
 	type want struct {
@@ -133,6 +138,7 @@ func TestAPIShortenHandler_WithGzip(t *testing.T) {
 		require.NoError(t, err)
 
 		r := chi.NewRouter()
+		r.Use(middleware.WithAuth)
 		r.Use(middleware.WithGzip)
 		r.Post("/api/shorten", h.APIShortenHandler)
 
@@ -174,6 +180,7 @@ func TestAPIShortenHandler_WithGzip(t *testing.T) {
 		require.NoError(t, err)
 
 		r := chi.NewRouter()
+		r.Use(middleware.WithAuth)
 		r.Use(middleware.WithGzip)
 		r.Post("/api/shorten", h.APIShortenHandler)
 
