@@ -131,7 +131,9 @@ func TestGetUserURLs_WithURLs(t *testing.T) {
 	require.Equal(t, http.StatusCreated, rec1.Code)
 
 	// Reuse cookie from first request
-	cookie := rec1.Result().Cookies()
+	res1 := rec1.Result()
+	defer res1.Body.Close()
+	cookie := res1.Cookies()
 
 	req2 := httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
 	for _, c := range cookie {
