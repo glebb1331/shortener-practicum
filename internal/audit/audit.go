@@ -9,7 +9,7 @@ import (
 )
 
 type AuditEvent struct {
-	Ts     int64  `json:"ts"`
+	TS     int64  `json:"ts"`
 	Action string `json:"action"`
 	UserID string `json:"user_id,omitempty"`
 	URL    string `json:"url"`
@@ -50,7 +50,7 @@ func (as *AuditService) Register(o Observer) {
 }
 
 func (as *AuditService) Notify(event AuditEvent) {
-	event.Ts = time.Now().Unix()
+	event.TS = time.Now().Unix()
 	for _, o := range as.observers {
 		o.Notify(event)
 	}

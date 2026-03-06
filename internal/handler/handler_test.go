@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/glebb1331/shortener-practicum/internal/audit"
 	"github.com/glebb1331/shortener-practicum/internal/middleware"
 	"github.com/glebb1331/shortener-practicum/internal/storage"
 	"github.com/go-chi/chi/v5"
@@ -19,7 +20,7 @@ import (
 
 func setupRouter() (*chi.Mux, *Handler) {
 	store := storage.NewMemoryStorage()
-	h, err := NewHandler("http://localhost:8080", store)
+	h, err := NewHandler("http://localhost:8080", store, audit.NewAuditService())
 	if err != nil {
 		panic(err)
 	}
@@ -35,7 +36,7 @@ func setupRouter() (*chi.Mux, *Handler) {
 
 func TestShortenHandler(t *testing.T) {
 	store := storage.NewMemoryStorage()
-	h, err := NewHandler("http://localhost:8080", store)
+	h, err := NewHandler("http://localhost:8080", store, audit.NewAuditService())
 	require.NoError(t, err)
 
 	r := chi.NewRouter()
@@ -134,7 +135,7 @@ func TestAPIShortenHandler_WithGzip(t *testing.T) {
 
 	t.Run("gzip compressed request", func(t *testing.T) {
 		store := storage.NewMemoryStorage()
-		h, err := NewHandler("http://localhost:8080", store)
+		h, err := NewHandler("http://localhost:8080", store, audit.NewAuditService())
 		require.NoError(t, err)
 
 		r := chi.NewRouter()
@@ -176,7 +177,7 @@ func TestAPIShortenHandler_WithGzip(t *testing.T) {
 
 	t.Run("gzip compressed response", func(t *testing.T) {
 		store := storage.NewMemoryStorage()
-		h, err := NewHandler("http://localhost:8080", store)
+		h, err := NewHandler("http://localhost:8080", store, audit.NewAuditService())
 		require.NoError(t, err)
 
 		r := chi.NewRouter()
