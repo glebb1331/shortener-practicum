@@ -95,7 +95,7 @@ func (s *MemoryStorage) GetByUserID(ctx context.Context, userID string) ([]Recor
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var result []Record
+	result := make([]Record, 0, len(s.urls)/2)
 	for _, rec := range s.urls {
 		if rec.UserID == userID {
 			result = append(result, rec)

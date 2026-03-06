@@ -3,10 +3,8 @@ package handler
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"math/rand"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -18,18 +16,22 @@ import (
 
 var ErrEmptyURL = errors.New("empty url")
 
+var idBufPool = sync.Pool{New: func() any { b := make([]byte, 8); return &b }}
+
 type URLService struct {
-	store   storage.Storage
-	baseURL string
-	rnd     *rand.Rand
-	mu      sync.Mutex
+	store     storage.Storage
+	baseURL   string
+	urlPrefix string
+	rnd       *rand.Rand
+	mu        sync.Mutex
 }
 
 func NewURLService(store storage.Storage, baseURL string) *URLService {
 	return &URLService{
-		store:   store,
-		baseURL: baseURL,
-		rnd:     rand.New(rand.NewSource(time.Now().UnixNano())),
+		store:     store,
+		baseURL:   baseURL,
+		urlPrefix: strings.TrimRight(baseURL, "/") + "/",
+		rnd:       rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -45,21 +47,12 @@ func (s *URLService) Shorten(ctx context.Context, originalURL, userID string) (s
 	storedID, err := s.store.Save(ctx, id, originalURL, userID)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLExists) {
-			shortURL, err := url.JoinPath(s.baseURL, storedID)
-			if err != nil {
-				return "", fmt.Errorf("failed to create short URL: %w", err)
-			}
-			return shortURL, storage.ErrURLExists
+			return s.urlPrefix + storedID, storage.ErrURLExists
 		}
 		return "", err
 	}
 
-	shortURL, err := url.JoinPath(s.baseURL, storedID)
-	if err != nil {
-		return "", fmt.Errorf("failed to create short URL: %w", err)
-	}
-
-	return shortURL, nil
+	return s.urlPrefix + storedID, nil
 }
 
 func (s *URLService) Resolve(ctx context.Context, id string) (string, error) {
@@ -72,11 +65,14 @@ func (s *URLService) Ping(ctx context.Context) error {
 
 func generateID(rnd *rand.Rand) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, 8)
+	bp := idBufPool.Get().(*[]byte)
+	b := *bp
 	for i := range b {
 		b[i] = letters[rnd.Intn(len(letters))]
 	}
-	return string(b)
+	id := string(b)
+	idBufPool.Put(bp)
+	return id
 }
 
 func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, userID string) ([]BatchResponseItem, error) {
@@ -89,34 +85,29 @@ func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, 
 	records := make([]storage.Record, 0, len(urls))
 	response := make([]BatchResponseItem, len(urls))
 
-	for i, item := range urls {
+	for _, item := range urls {
 		if strings.TrimSpace(item.OriginalURL) == "" {
 			return nil, ErrEmptyURL
 		}
+	}
 
-		s.mu.Lock()
-		id := generateID(s.rnd)
-		s.mu.Unlock()
+	ids := make([]string, len(urls))
+	s.mu.Lock()
+	for i := range urls {
+		ids[i] = generateID(s.rnd)
+	}
+	s.mu.Unlock()
 
+	for i, item := range urls {
+		id := ids[i]
 		records = append(records, storage.Record{
 			ID:          id,
 			OriginalURL: item.OriginalURL,
 			UserID:      userID,
 		})
-
-		shortURL, err := url.JoinPath(s.baseURL, id)
-		if err != nil {
-			logger.Log.Error("Failed to create short URL in batch",
-				zap.Error(err),
-				zap.String("baseURL", s.baseURL),
-				zap.String("id", id),
-			)
-			return nil, fmt.Errorf("failed to create short URL: %w", err)
-		}
-
 		response[i] = BatchResponseItem{
 			CorrelationID: item.CorrelationID,
-			ShortURL:      shortURL,
+			ShortURL:      s.urlPrefix + id,
 		}
 	}
 
