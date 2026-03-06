@@ -11,6 +11,8 @@ type Config struct {
 	BaseURL         string `env:"BASE_URL" env-default:"http://localhost:8080"`
 	FileStoragePath string `env:"FILE_STORAGE_PATH" env-default:"storage.json"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
+	AuditFile       string `env:"AUDIT_FILE"`
+	AuditURL        string `env:"AUDIT_URL"`
 }
 
 func NewConfig() (*Config, error) {
@@ -20,6 +22,8 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "base url")
 	flag.StringVar(&cfg.FileStoragePath, "f", "storage.json", "file storage path")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database DSN")
+	flag.StringVar(&cfg.AuditFile, "audit-file", "", "audit file path")
+	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit url path")
 	flag.Parse()
 
 	if err := cleanenv.ReadEnv(cfg); err != nil {

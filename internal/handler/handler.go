@@ -9,13 +9,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/glebb1331/shortener-practicum/internal/audit"
 	"github.com/glebb1331/shortener-practicum/internal/logger"
 	"github.com/glebb1331/shortener-practicum/internal/storage"
 	"go.uber.org/zap"
 )
 
 type Handler struct {
-	service *URLService
+	service  *URLService
+	auditSvc *audit.AuditService
 }
 
 type BatchRequestItem struct {
@@ -35,11 +37,12 @@ type UserURLResponse struct {
 	OriginalURL string `json:"original_url"`
 }
 
-func NewHandler(baseURL string, store storage.Storage) (*Handler, error) {
+func NewHandler(baseURL string, store storage.Storage, auditSvc *audit.AuditService) (*Handler, error) {
 	service := NewURLService(store, baseURL)
 
 	return &Handler{
-		service: service,
+		service:  service,
+		auditSvc: auditSvc,
 	}, nil
 }
 
@@ -63,7 +66,9 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	result, err := h.service.Shorten(r.Context(), string(body), userID)
+	originalURL := string(body)
+
+	result, err := h.service.Shorten(r.Context(), originalURL, userID)
 	if err != nil {
 		if errors.Is(err, ErrEmptyURL) {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -73,6 +78,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusConflict)
 			w.Write([]byte(result))
+			h.auditSvc.Notify(audit.AuditEvent{Action: "shorten", UserID: userID, URL: originalURL})
 			return
 		}
 		logger.Log.Error("Internal server error",
@@ -88,6 +94,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(result))
+	h.auditSvc.Notify(audit.AuditEvent{Action: "shorten", UserID: userID, URL: originalURL})
 }
 
 func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
@@ -115,6 +122,8 @@ func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := r.Header.Get("X-User-ID")
+	h.auditSvc.Notify(audit.AuditEvent{Action: "follow", UserID: userID, URL: originalURL})
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
 }
 
@@ -156,6 +165,7 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
 			json.NewEncoder(w).Encode(ShortenResponse{Result: result})
+			h.auditSvc.Notify(audit.AuditEvent{Action: "shorten", UserID: userID, URL: req.URL})
 			return
 		}
 
@@ -174,6 +184,7 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(resp)
+	h.auditSvc.Notify(audit.AuditEvent{Action: "shorten", UserID: userID, URL: req.URL})
 }
 
 func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {

@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/glebb1331/shortener-practicum/internal/audit"
 	"github.com/glebb1331/shortener-practicum/internal/config"
 	"github.com/glebb1331/shortener-practicum/internal/handler"
 	"github.com/glebb1331/shortener-practicum/internal/logger"
@@ -31,13 +32,21 @@ func main() {
 	}
 	defer store.Close()
 
+	auditSvc := audit.NewAuditService()
+	if cfg.AuditFile != "" {
+		auditSvc.Register(audit.NewFileObserver(cfg.AuditFile))
+	}
+	if cfg.AuditURL != "" {
+		auditSvc.Register(audit.NewHTTPObserver(cfg.AuditURL))
+	}
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.WithLogging)
 	r.Use(middleware.WithGzip)
 	r.Use(middleware.WithAuth)
 
-	h, err := handler.NewHandler(cfg.BaseURL, store)
+	h, err := handler.NewHandler(cfg.BaseURL, store, auditSvc)
 	if err != nil {
 		log.Fatal(err)
 	}
