@@ -124,7 +124,9 @@ func ExampleHandler_GetUserURLs() {
 	r.ServeHTTP(rec1, req1)
 
 	// Берём куку для авторизации
-	cookie := rec1.Result().Cookies()
+	res1 := rec1.Result()
+	defer res1.Body.Close()
+	cookie := res1.Cookies()
 
 	req2 := httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
 	for _, c := range cookie {
