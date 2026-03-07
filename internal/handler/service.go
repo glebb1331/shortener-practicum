@@ -14,10 +14,12 @@ import (
 	"go.uber.org/zap"
 )
 
+// ErrEmptyURL возвращается, когда переданный URL пустой или состоит только из пробелов.
 var ErrEmptyURL = errors.New("empty url")
 
 var idBufPool = sync.Pool{New: func() any { b := make([]byte, 8); return &b }}
 
+// URLService реализует бизнес-логику сокращения ссылок.
 type URLService struct {
 	store     storage.Storage
 	baseURL   string
@@ -26,6 +28,7 @@ type URLService struct {
 	mu        sync.Mutex
 }
 
+// NewURLService создаёт URLService с заданным хранилищем и базовым URL.
 func NewURLService(store storage.Storage, baseURL string) *URLService {
 	return &URLService{
 		store:     store,
@@ -35,6 +38,8 @@ func NewURLService(store storage.Storage, baseURL string) *URLService {
 	}
 }
 
+// Shorten сокращает URL и возвращает короткую ссылку.
+// Если URL уже существует, возвращает существующую ссылку и storage.ErrURLExists.
 func (s *URLService) Shorten(ctx context.Context, originalURL, userID string) (string, error) {
 	if strings.TrimSpace(originalURL) == "" {
 		return "", ErrEmptyURL
@@ -55,10 +60,12 @@ func (s *URLService) Shorten(ctx context.Context, originalURL, userID string) (s
 	return s.urlPrefix + storedID, nil
 }
 
+// Resolve возвращает оригинальный URL по короткому id.
 func (s *URLService) Resolve(ctx context.Context, id string) (string, error) {
 	return s.store.Get(ctx, id)
 }
 
+// Ping проверяет доступность хранилища.
 func (s *URLService) Ping(ctx context.Context) error {
 	return s.store.Ping(ctx)
 }
@@ -75,6 +82,7 @@ func generateID(rnd *rand.Rand) string {
 	return id
 }
 
+// ShortenBatch сокращает несколько URL за одну операцию.
 func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, userID string) ([]BatchResponseItem, error) {
 	logger.Log.Info("ShortenBatch called", zap.Int("count", len(urls)))
 
@@ -121,14 +129,17 @@ func (s *URLService) ShortenBatch(ctx context.Context, urls []BatchRequestItem, 
 	return response, nil
 }
 
+// GetByUserID возвращает все ссылки, созданные указанным пользователем.
 func (s *URLService) GetByUserID(ctx context.Context, userID string) ([]storage.Record, error) {
 	return s.store.GetByUserID(ctx, userID)
 }
 
+// BaseURL возвращает базовый URL сервиса.
 func (s *URLService) BaseURL() string {
 	return s.baseURL
 }
 
+// DeleteURLs асинхронно помечает ссылки пользователя как удалённые.
 func (s *URLService) DeleteURLs(ctx context.Context, userID string, ids []string) error {
 	if len(ids) == 0 {
 		return errors.New("empty ids")
@@ -154,33 +165,6 @@ func (s *URLService) DeleteURLs(ctx context.Context, userID string, ids []string
 	return nil
 }
 
-/*
-	func (s *URLService) asyncDeleteURLs(ctx context.Context, userID string, ids []string) {
-		batchSize := 100
-		idChannels := make([]chan []string, 0)
-
-		for i := 0; i < len(ids); i += batchSize {
-			end := i + batchSize
-			if end > len(ids) {
-				end = len(ids)
-			}
-			batch := ids[i:end]
-
-			ch := make(chan []string, 1)
-			ch <- batch
-			close(ch)
-			idChannels = append(idChannels, ch)
-		}
-
-		resultChan := s.fanInDelete(ctx, userID, idChannels)
-
-		go func() {
-			for err := range resultChan {
-				_ = err
-			}
-		}()
-	}
-*/
 func (s *URLService) fanInDelete(ctx context.Context, userID string, channels []chan []string) <-chan error {
 	out := make(chan error)
 	var wg sync.WaitGroup

@@ -15,28 +15,34 @@ import (
 	"go.uber.org/zap"
 )
 
+// Handler содержит HTTP-обработчики сервиса сокращения ссылок.
 type Handler struct {
 	service  *URLService
 	auditSvc *audit.AuditService
 }
 
+// BatchRequestItem — элемент запроса на пакетное сокращение.
 type BatchRequestItem struct {
 	CorrelationID string `json:"correlation_id"`
 	OriginalURL   string `json:"original_url"`
 }
 
+// BatchResponseItem — элемент ответа на пакетное сокращение.
 type BatchResponseItem struct {
 	CorrelationID string `json:"correlation_id"`
 	ShortURL      string `json:"short_url"`
 }
 
+// BatchResponse — список элементов ответа на пакетное сокращение.
 type BatchResponse []BatchResponseItem
 
+// UserURLResponse — пара короткий/оригинальный URL для ответа пользователю.
 type UserURLResponse struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 }
 
+// NewHandler создаёт Handler с заданным хранилищем и сервисом аудита.
 func NewHandler(baseURL string, store storage.Storage, auditSvc *audit.AuditService) (*Handler, error) {
 	service := NewURLService(store, baseURL)
 
@@ -46,6 +52,7 @@ func NewHandler(baseURL string, store storage.Storage, auditSvc *audit.AuditServ
 	}, nil
 }
 
+// ShortenHandler обрабатывает POST / — принимает plain-text URL, возвращает короткую ссылку.
 func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
@@ -97,6 +104,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	h.auditSvc.Notify(audit.AuditEvent{Action: "shorten", UserID: userID, URL: originalURL})
 }
 
+// RedirectHandler обрабатывает GET /{id} — перенаправляет на оригинальный URL.
 func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/")
 
@@ -127,14 +135,17 @@ func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
 }
 
+// ShortenRequest — тело запроса для POST /api/shorten.
 type ShortenRequest struct {
 	URL string `json:"url"`
 }
 
+// ShortenResponse — тело ответа для POST /api/shorten.
 type ShortenResponse struct {
 	Result string `json:"result"`
 }
 
+// APIShortenHandler обрабатывает POST /api/shorten — принимает JSON с URL, возвращает JSON с короткой ссылкой.
 func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		w.WriteHeader(http.StatusBadRequest)
@@ -187,6 +198,7 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 	h.auditSvc.Notify(audit.AuditEvent{Action: "shorten", UserID: userID, URL: req.URL})
 }
 
+// PingHandler обрабатывает GET /ping — проверяет доступность хранилища.
 func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.Ping(r.Context()); err != nil {
 
@@ -202,6 +214,7 @@ func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// APIShortenBatchHandler обрабатывает POST /api/shorten/batch — пакетное сокращение ссылок.
 func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json") // Устанавливаем заранее
 
@@ -257,6 +270,7 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(result)
 }
 
+// GetUserURLs обрабатывает GET /api/user/urls — возвращает все ссылки текущего пользователя.
 func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("X-User-ID")
 	if userID == "" {
@@ -305,6 +319,7 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+// DeleteUserURLs обрабатывает DELETE /api/user/urls — помечает ссылки пользователя как удалённые.
 func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		w.WriteHeader(http.StatusMethodNotAllowed)

@@ -16,6 +16,7 @@ const cookieName = "token"
 
 var secretKey = []byte("super-secret-key")
 
+// Claims — JWT-клеймы с идентификатором пользователя.
 type Claims struct {
 	UserID string `json:"user_id"`
 	jwt.RegisteredClaims
@@ -52,6 +53,9 @@ func parseToken(tokenStr string) (*Claims, bool) {
 	return claims, ok
 }
 
+// WithAuth — middleware аутентификации на основе JWT-куки.
+// Если кука отсутствует, создаёт нового пользователя и устанавливает куку.
+// Передаёт userID в заголовке X-User-ID.
 func WithAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var tokenStr string

@@ -6,6 +6,7 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
+// Config содержит конфигурацию сервиса, читается из флагов и переменных окружения.
 type Config struct {
 	ServerAddress   string `env:"SERVER_ADDRESS" env-default:"localhost:8080"`
 	BaseURL         string `env:"BASE_URL" env-default:"http://localhost:8080"`
@@ -15,6 +16,7 @@ type Config struct {
 	AuditURL        string `env:"AUDIT_URL"`
 }
 
+// NewConfig читает конфигурацию из флагов командной строки и переменных окружения.
 func NewConfig() (*Config, error) {
 	cfg := &Config{}
 
