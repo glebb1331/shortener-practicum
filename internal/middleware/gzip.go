@@ -16,6 +16,10 @@ func (w *gzipWriter) Write(b []byte) (int, error) {
 	return w.Writer.Write(b)
 }
 
+// WithGzip — middleware сжатия/распаковки gzip.
+// Распаковывает входящие запросы с Content-Encoding: gzip.
+// Сжимает ответы для клиентов, поддерживающих gzip (Accept-Encoding: gzip),
+// если Content-Type ответа application/json или text/html.
 func WithGzip(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Content-Encoding") == "gzip" {

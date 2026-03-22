@@ -9,40 +9,44 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/glebb1331/shortener-practicum/internal/audit"
 	"github.com/glebb1331/shortener-practicum/internal/logger"
 	"github.com/glebb1331/shortener-practicum/internal/storage"
+	"github.com/glebb1331/shortener-practicum/internal/usecase"
 	"go.uber.org/zap"
 )
 
+// Handler содержит HTTP-обработчики сервиса сокращения ссылок.
 type Handler struct {
-	service *URLService
+	service  *usecase.URLService
+	auditSvc *audit.AuditService
 }
 
-type BatchRequestItem struct {
-	CorrelationID string `json:"correlation_id"`
-	OriginalURL   string `json:"original_url"`
+// ShortenRequest — тело запроса для POST /api/shorten.
+type ShortenRequest struct {
+	URL string `json:"url"`
 }
 
-type BatchResponseItem struct {
-	CorrelationID string `json:"correlation_id"`
-	ShortURL      string `json:"short_url"`
+// ShortenResponse — тело ответа для POST /api/shorten.
+type ShortenResponse struct {
+	Result string `json:"result"`
 }
 
-type BatchResponse []BatchResponseItem
-
+// UserURLResponse — пара короткий/оригинальный URL для ответа пользователю.
 type UserURLResponse struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 }
 
-func NewHandler(baseURL string, store storage.Storage) (*Handler, error) {
-	service := NewURLService(store, baseURL)
-
+// NewHandler создаёт Handler с заданным сервисом и сервисом аудита.
+func NewHandler(svc *usecase.URLService, auditSvc *audit.AuditService) *Handler {
 	return &Handler{
-		service: service,
-	}, nil
+		service:  svc,
+		auditSvc: auditSvc,
+	}
 }
 
+// ShortenHandler обрабатывает POST / — принимает plain-text URL, возвращает короткую ссылку.
 func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
@@ -63,9 +67,11 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	result, err := h.service.Shorten(r.Context(), string(body), userID)
+	originalURL := string(body)
+
+	result, err := h.service.Shorten(r.Context(), originalURL, userID)
 	if err != nil {
-		if errors.Is(err, ErrEmptyURL) {
+		if errors.Is(err, usecase.ErrEmptyURL) {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
@@ -73,6 +79,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusConflict)
 			w.Write([]byte(result))
+			h.auditSvc.Notify(audit.AuditEvent{Action: "shorten", UserID: userID, URL: originalURL})
 			return
 		}
 		logger.Log.Error("Internal server error",
@@ -88,8 +95,10 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(result))
+	h.auditSvc.Notify(audit.AuditEvent{Action: "shorten", UserID: userID, URL: originalURL})
 }
 
+// RedirectHandler обрабатывает GET /{id} — перенаправляет на оригинальный URL.
 func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/")
 
@@ -115,17 +124,12 @@ func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := r.Header.Get("X-User-ID")
+	h.auditSvc.Notify(audit.AuditEvent{Action: "follow", UserID: userID, URL: originalURL})
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
 }
 
-type ShortenRequest struct {
-	URL string `json:"url"`
-}
-
-type ShortenResponse struct {
-	Result string `json:"result"`
-}
-
+// APIShortenHandler обрабатывает POST /api/shorten — принимает JSON с URL, возвращает JSON с короткой ссылкой.
 func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		w.WriteHeader(http.StatusBadRequest)
@@ -148,7 +152,7 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.service.Shorten(r.Context(), req.URL, userID)
 	if err != nil {
-		if errors.Is(err, ErrEmptyURL) {
+		if errors.Is(err, usecase.ErrEmptyURL) {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
@@ -156,6 +160,7 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
 			json.NewEncoder(w).Encode(ShortenResponse{Result: result})
+			h.auditSvc.Notify(audit.AuditEvent{Action: "shorten", UserID: userID, URL: req.URL})
 			return
 		}
 
@@ -174,8 +179,10 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(resp)
+	h.auditSvc.Notify(audit.AuditEvent{Action: "shorten", UserID: userID, URL: req.URL})
 }
 
+// PingHandler обрабатывает GET /ping — проверяет доступность хранилища.
 func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.Ping(r.Context()); err != nil {
 
@@ -191,8 +198,9 @@ func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// APIShortenBatchHandler обрабатывает POST /api/shorten/batch — пакетное сокращение ссылок.
 func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json") // Устанавливаем заранее
+	w.Header().Set("Content-Type", "application/json")
 
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		w.WriteHeader(http.StatusBadRequest)
@@ -209,7 +217,7 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var batchRequests []BatchRequestItem
+	var batchRequests []usecase.BatchRequestItem
 	if err := json.NewDecoder(r.Body).Decode(&batchRequests); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON"})
@@ -224,7 +232,7 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 
 	result, err := h.service.ShortenBatch(r.Context(), batchRequests, userID)
 	if err != nil {
-		if errors.Is(err, ErrEmptyURL) {
+		if errors.Is(err, usecase.ErrEmptyURL) {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": http.StatusText(http.StatusBadRequest)})
 			return
@@ -246,6 +254,7 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(result)
 }
 
+// GetUserURLs обрабатывает GET /api/user/urls — возвращает все ссылки текущего пользователя.
 func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("X-User-ID")
 	if userID == "" {
@@ -294,6 +303,7 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+// DeleteUserURLs обрабатывает DELETE /api/user/urls — помечает ссылки пользователя как удалённые.
 func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		w.WriteHeader(http.StatusMethodNotAllowed)

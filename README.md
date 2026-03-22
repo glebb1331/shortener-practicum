@@ -42,3 +42,33 @@ git fetch template && git checkout template/v2 .github
 - **Clean Architecture**
 - **Hexagonal Architecture**
 - **Layered Architecture**
+
+## Профилирование и бенчмарки
+
+Бенчмарки:
+
+```bash
+go test -bench=. -benchmem ./internal/handler/ ./internal/storage/
+```
+
+Дифф профилей:
+
+```bash
+go tool pprof -top -diff_base=profiles/base.pprof profiles/result.pprof
+```
+
+```
+      flat  flat%   sum%        cum   cum%
+-1080.27MB 25.66% 25.66% -1080.27MB 25.66%  storage.(*MemoryStorage).GetByUserID
+   10.50MB  0.25% 25.41%       10MB  0.24%  fmt.Sprintf
+       4MB 0.095% 25.31%    12.98MB  0.31%  storage.BenchmarkGet
+         0     0% 25.31% -1081.35MB 25.68%  storage.BenchmarkGetByUserID
+```
+
+Что поменяли:
+- `generateID` — `sync.Pool` вместо `make` каждый раз
+- `urlPrefix` — строковая конкатенация вместо `url.JoinPath`
+- `ShortenBatch` — один мьютекс на весь цикл
+- `GetByUserID` — `make([]Record, 0, len/2)` вместо `nil`
+
+Покрытие тестами: **42.5%**

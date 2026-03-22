@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// URLRecord — запись об одной сокращённой ссылке в файловом хранилище.
 type URLRecord struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
@@ -19,6 +20,7 @@ type URLRecord struct {
 	IsDeleted   bool   `json:"is_deleted"`
 }
 
+// FileStorage — хранилище ссылок с сохранением состояния в JSON-файл.
 type FileStorage struct {
 	mu       sync.RWMutex
 	records  []URLRecord
@@ -26,6 +28,7 @@ type FileStorage struct {
 	filePath string
 }
 
+// NewFileStorage создаёт FileStorage, загружая существующие данные из filePath.
 func NewFileStorage(filePath string) (*FileStorage, error) {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -45,6 +48,7 @@ func NewFileStorage(filePath string) (*FileStorage, error) {
 	return s, nil
 }
 
+// Save сохраняет ссылку в файл. Если URL уже существует, возвращает ErrURLExists.
 func (s *FileStorage) Save(ctx context.Context, id, originalURL, userID string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -69,6 +73,7 @@ func (s *FileStorage) Save(ctx context.Context, id, originalURL, userID string) 
 	return id, s.save()
 }
 
+// Get возвращает оригинальный URL по короткому id. Возвращает ErrNotFound или ErrURLDeleted.
 func (s *FileStorage) Get(ctx context.Context, id string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -112,9 +117,13 @@ func (s *FileStorage) save() error {
 	return os.WriteFile(s.filePath, data, 0644)
 }
 
-func (s *FileStorage) Close() error                   { return nil }
+// Close освобождает ресурсы хранилища (для FileStorage — no-op).
+func (s *FileStorage) Close() error { return nil }
+
+// Ping проверяет доступность хранилища (для FileStorage всегда nil).
 func (s *FileStorage) Ping(ctx context.Context) error { return nil }
 
+// BatchSave сохраняет несколько записей за одну операцию, пропуская дубликаты.
 func (s *FileStorage) BatchSave(ctx context.Context, records []Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -138,6 +147,7 @@ func (s *FileStorage) BatchSave(ctx context.Context, records []Record) error {
 	return s.save()
 }
 
+// GetByOriginalURL возвращает короткий id по оригинальному URL.
 func (s *FileStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -150,6 +160,7 @@ func (s *FileStorage) GetByOriginalURL(ctx context.Context, originalURL string) 
 	return "", ErrNotFound
 }
 
+// GetByUserID возвращает все записи указанного пользователя.
 func (s *FileStorage) GetByUserID(ctx context.Context, userID string) ([]Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -168,6 +179,7 @@ func (s *FileStorage) GetByUserID(ctx context.Context, userID string) ([]Record,
 	return result, nil
 }
 
+// DeleteURLs помечает ссылки пользователя как удалённые и сохраняет файл.
 func (s *FileStorage) DeleteURLs(ctx context.Context, userID string, ids []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -188,6 +200,7 @@ func (s *FileStorage) DeleteURLs(ctx context.Context, userID string, ids []strin
 	return nil
 }
 
+// GetBatchByUserID возвращает записи пользователя по списку id.
 func (s *FileStorage) GetBatchByUserID(ctx context.Context, userID string, ids []string) ([]Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

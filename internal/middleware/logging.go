@@ -29,6 +29,8 @@ func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.responseData.status = statusCode
 }
 
+// WithLogging — middleware логирования HTTP-запросов.
+// Записывает метод, URI, статус, размер ответа и длительность запроса.
 func WithLogging(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

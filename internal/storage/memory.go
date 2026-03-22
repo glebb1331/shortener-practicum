@@ -5,17 +5,20 @@ import (
 	"sync"
 )
 
+// MemoryStorage — хранилище ссылок в оперативной памяти.
 type MemoryStorage struct {
 	mu   sync.RWMutex
 	urls map[string]Record
 }
 
+// NewMemoryStorage создаёт новое in-memory хранилище.
 func NewMemoryStorage() *MemoryStorage {
 	return &MemoryStorage{
 		urls: make(map[string]Record),
 	}
 }
 
+// Save сохраняет ссылку в памяти. Если URL уже существует, возвращает ErrURLExists.
 func (s *MemoryStorage) Save(ctx context.Context, id, originalURL, userID string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -30,6 +33,7 @@ func (s *MemoryStorage) Save(ctx context.Context, id, originalURL, userID string
 	return id, nil
 }
 
+// Get возвращает оригинальный URL по id. Возвращает ErrNotFound или ErrURLDeleted.
 func (s *MemoryStorage) Get(ctx context.Context, id string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -46,14 +50,17 @@ func (s *MemoryStorage) Get(ctx context.Context, id string) (string, error) {
 	return rec.OriginalURL, nil
 }
 
+// Close освобождает ресурсы (для MemoryStorage — no-op).
 func (s *MemoryStorage) Close() error {
 	return nil
 }
 
+// Ping проверяет доступность хранилища (для MemoryStorage всегда nil).
 func (s *MemoryStorage) Ping(ctx context.Context) error {
 	return nil
 }
 
+// BatchSave сохраняет несколько записей, пропуская дубликаты по id и originalURL.
 func (s *MemoryStorage) BatchSave(ctx context.Context, records []Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -79,6 +86,7 @@ func (s *MemoryStorage) BatchSave(ctx context.Context, records []Record) error {
 	return nil
 }
 
+// GetByOriginalURL возвращает короткий id по оригинальному URL.
 func (s *MemoryStorage) GetByOriginalURL(ctx context.Context, originalURL string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -91,11 +99,12 @@ func (s *MemoryStorage) GetByOriginalURL(ctx context.Context, originalURL string
 	return "", ErrNotFound
 }
 
+// GetByUserID возвращает все записи указанного пользователя.
 func (s *MemoryStorage) GetByUserID(ctx context.Context, userID string) ([]Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var result []Record
+	result := make([]Record, 0, len(s.urls)/2)
 	for _, rec := range s.urls {
 		if rec.UserID == userID {
 			result = append(result, rec)
@@ -105,6 +114,7 @@ func (s *MemoryStorage) GetByUserID(ctx context.Context, userID string) ([]Recor
 	return result, nil
 }
 
+// DeleteURLs помечает ссылки пользователя как удалённые (только если userID совпадает).
 func (s *MemoryStorage) DeleteURLs(ctx context.Context, userID string, ids []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -118,6 +128,7 @@ func (s *MemoryStorage) DeleteURLs(ctx context.Context, userID string, ids []str
 	return nil
 }
 
+// GetBatchByUserID возвращает записи пользователя по списку id.
 func (s *MemoryStorage) GetBatchByUserID(ctx context.Context, userID string, ids []string) ([]Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
