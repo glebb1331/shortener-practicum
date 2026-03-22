@@ -12,12 +12,13 @@ import (
 	"github.com/glebb1331/shortener-practicum/internal/audit"
 	"github.com/glebb1331/shortener-practicum/internal/middleware"
 	"github.com/glebb1331/shortener-practicum/internal/storage"
+	"github.com/glebb1331/shortener-practicum/internal/usecase"
 	"github.com/go-chi/chi/v5"
 )
 
 func newTestRouter() *chi.Mux {
 	store := storage.NewMemoryStorage()
-	h, _ := NewHandler("http://localhost:8080", store, audit.NewAuditService())
+	h := NewHandler(usecase.NewURLService(store, "http://localhost:8080"), audit.NewAuditService())
 	r := chi.NewRouter()
 	r.Use(middleware.WithAuth)
 	r.Post("/", h.ShortenHandler)
@@ -77,7 +78,7 @@ func ExampleHandler_APIShortenHandler() {
 func ExampleHandler_APIShortenBatchHandler() {
 	r := newTestRouter()
 
-	items := []BatchRequestItem{
+	items := []usecase.BatchRequestItem{
 		{CorrelationID: "1", OriginalURL: "https://a.com"},
 		{CorrelationID: "2", OriginalURL: "https://b.com"},
 	}
@@ -90,7 +91,7 @@ func ExampleHandler_APIShortenBatchHandler() {
 	res := rec.Result()
 	defer res.Body.Close()
 
-	var resp []BatchResponseItem
+	var resp []usecase.BatchResponseItem
 	json.NewDecoder(res.Body).Decode(&resp)
 
 	fmt.Println(res.StatusCode)

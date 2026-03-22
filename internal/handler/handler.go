@@ -12,29 +12,25 @@ import (
 	"github.com/glebb1331/shortener-practicum/internal/audit"
 	"github.com/glebb1331/shortener-practicum/internal/logger"
 	"github.com/glebb1331/shortener-practicum/internal/storage"
+	"github.com/glebb1331/shortener-practicum/internal/usecase"
 	"go.uber.org/zap"
 )
 
 // Handler содержит HTTP-обработчики сервиса сокращения ссылок.
 type Handler struct {
-	service  *URLService
+	service  *usecase.URLService
 	auditSvc *audit.AuditService
 }
 
-// BatchRequestItem — элемент запроса на пакетное сокращение.
-type BatchRequestItem struct {
-	CorrelationID string `json:"correlation_id"`
-	OriginalURL   string `json:"original_url"`
+// ShortenRequest — тело запроса для POST /api/shorten.
+type ShortenRequest struct {
+	URL string `json:"url"`
 }
 
-// BatchResponseItem — элемент ответа на пакетное сокращение.
-type BatchResponseItem struct {
-	CorrelationID string `json:"correlation_id"`
-	ShortURL      string `json:"short_url"`
+// ShortenResponse — тело ответа для POST /api/shorten.
+type ShortenResponse struct {
+	Result string `json:"result"`
 }
-
-// BatchResponse — список элементов ответа на пакетное сокращение.
-type BatchResponse []BatchResponseItem
 
 // UserURLResponse — пара короткий/оригинальный URL для ответа пользователю.
 type UserURLResponse struct {
@@ -42,14 +38,12 @@ type UserURLResponse struct {
 	OriginalURL string `json:"original_url"`
 }
 
-// NewHandler создаёт Handler с заданным хранилищем и сервисом аудита.
-func NewHandler(baseURL string, store storage.Storage, auditSvc *audit.AuditService) (*Handler, error) {
-	service := NewURLService(store, baseURL)
-
+// NewHandler создаёт Handler с заданным сервисом и сервисом аудита.
+func NewHandler(svc *usecase.URLService, auditSvc *audit.AuditService) *Handler {
 	return &Handler{
-		service:  service,
+		service:  svc,
 		auditSvc: auditSvc,
-	}, nil
+	}
 }
 
 // ShortenHandler обрабатывает POST / — принимает plain-text URL, возвращает короткую ссылку.
@@ -77,7 +71,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.service.Shorten(r.Context(), originalURL, userID)
 	if err != nil {
-		if errors.Is(err, ErrEmptyURL) {
+		if errors.Is(err, usecase.ErrEmptyURL) {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
@@ -135,16 +129,6 @@ func (h *Handler) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
 }
 
-// ShortenRequest — тело запроса для POST /api/shorten.
-type ShortenRequest struct {
-	URL string `json:"url"`
-}
-
-// ShortenResponse — тело ответа для POST /api/shorten.
-type ShortenResponse struct {
-	Result string `json:"result"`
-}
-
 // APIShortenHandler обрабатывает POST /api/shorten — принимает JSON с URL, возвращает JSON с короткой ссылкой.
 func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
@@ -168,7 +152,7 @@ func (h *Handler) APIShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.service.Shorten(r.Context(), req.URL, userID)
 	if err != nil {
-		if errors.Is(err, ErrEmptyURL) {
+		if errors.Is(err, usecase.ErrEmptyURL) {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
@@ -216,7 +200,7 @@ func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 
 // APIShortenBatchHandler обрабатывает POST /api/shorten/batch — пакетное сокращение ссылок.
 func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json") // Устанавливаем заранее
+	w.Header().Set("Content-Type", "application/json")
 
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		w.WriteHeader(http.StatusBadRequest)
@@ -233,7 +217,7 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var batchRequests []BatchRequestItem
+	var batchRequests []usecase.BatchRequestItem
 	if err := json.NewDecoder(r.Body).Decode(&batchRequests); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON"})
@@ -248,7 +232,7 @@ func (h *Handler) APIShortenBatchHandler(w http.ResponseWriter, r *http.Request)
 
 	result, err := h.service.ShortenBatch(r.Context(), batchRequests, userID)
 	if err != nil {
-		if errors.Is(err, ErrEmptyURL) {
+		if errors.Is(err, usecase.ErrEmptyURL) {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": http.StatusText(http.StatusBadRequest)})
 			return

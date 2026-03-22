@@ -11,6 +11,7 @@ import (
 	"github.com/glebb1331/shortener-practicum/internal/audit"
 	"github.com/glebb1331/shortener-practicum/internal/middleware"
 	"github.com/glebb1331/shortener-practicum/internal/storage"
+	"github.com/glebb1331/shortener-practicum/internal/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,10 +19,7 @@ import (
 
 func setupFullRouter() *chi.Mux {
 	store := storage.NewMemoryStorage()
-	h, err := NewHandler("http://localhost:8080", store, audit.NewAuditService())
-	if err != nil {
-		panic(err)
-	}
+	h := NewHandler(usecase.NewURLService(store, "http://localhost:8080"), audit.NewAuditService())
 
 	r := chi.NewRouter()
 	r.Use(middleware.WithAuth)
@@ -50,7 +48,7 @@ func TestPingHandler(t *testing.T) {
 func TestAPIShortenBatchHandler(t *testing.T) {
 	r := setupFullRouter()
 
-	items := []BatchRequestItem{
+	items := []usecase.BatchRequestItem{
 		{CorrelationID: "1", OriginalURL: "https://a.com"},
 		{CorrelationID: "2", OriginalURL: "https://b.com"},
 	}
@@ -63,7 +61,7 @@ func TestAPIShortenBatchHandler(t *testing.T) {
 
 	assert.Equal(t, http.StatusCreated, rec.Code)
 
-	var resp []BatchResponseItem
+	var resp []usecase.BatchResponseItem
 	err := json.NewDecoder(rec.Body).Decode(&resp)
 	require.NoError(t, err)
 	assert.Len(t, resp, 2)
@@ -115,8 +113,7 @@ func TestGetUserURLs_NoURLs(t *testing.T) {
 
 func TestGetUserURLs_WithURLs(t *testing.T) {
 	store := storage.NewMemoryStorage()
-	h, err := NewHandler("http://localhost:8080", store, audit.NewAuditService())
-	require.NoError(t, err)
+	h := NewHandler(usecase.NewURLService(store, "http://localhost:8080"), audit.NewAuditService())
 
 	r := chi.NewRouter()
 	r.Use(middleware.WithAuth)
@@ -159,8 +156,7 @@ func TestDeleteUserURLs_Valid(t *testing.T) {
 
 func TestDeleteUserURLs_WrongMethod(t *testing.T) {
 	store := storage.NewMemoryStorage()
-	h, err := NewHandler("http://localhost:8080", store, audit.NewAuditService())
-	require.NoError(t, err)
+	h := NewHandler(usecase.NewURLService(store, "http://localhost:8080"), audit.NewAuditService())
 
 	r := chi.NewRouter()
 	r.Use(middleware.WithAuth)
