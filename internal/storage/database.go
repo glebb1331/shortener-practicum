@@ -126,7 +126,8 @@ func (s *DatabaseStorage) GetByUserID(ctx context.Context, userID string) ([]Rec
 	var records []Record
 	for rows.Next() {
 		var rec Record
-		if err := rows.Scan(&rec.ID, &rec.OriginalURL, &rec.UserID, &rec.IsDeleted); err != nil {
+		err = rows.Scan(&rec.ID, &rec.OriginalURL, &rec.UserID, &rec.IsDeleted)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan record: %w", err)
 		}
 		records = append(records, rec)
@@ -172,7 +173,8 @@ func (s *DatabaseStorage) GetBatchByUserID(ctx context.Context, userID string, i
 	var records []Record
 	for rows.Next() {
 		var rec Record
-		if err := rows.Scan(&rec.ID, &rec.OriginalURL, &rec.UserID, &rec.IsDeleted); err != nil {
+		err = rows.Scan(&rec.ID, &rec.OriginalURL, &rec.UserID, &rec.IsDeleted)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan batch record: %w", err)
 		}
 		records = append(records, rec)

@@ -7,6 +7,7 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,10 +32,15 @@ type pkgData struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	root, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ошибка получения рабочей директории: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("ошибка получения рабочей директории: %w", err)
 	}
 
 	pkgMap := make(map[string]*pkgData)
@@ -104,8 +110,7 @@ func main() {
 	})
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ошибка обхода директорий: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("ошибка обхода директорий: %w", err)
 	}
 
 	for dir, data := range pkgMap {
@@ -128,11 +133,12 @@ func main() {
 
 		outPath := filepath.Join(dir, "reset.gen.go")
 		if err := os.WriteFile(outPath, formatted, 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "ошибка записи файла %s: %v\n", outPath, err)
-			os.Exit(1)
+			return fmt.Errorf("ошибка записи файла %s: %w", outPath, err)
 		}
 		fmt.Printf("сгенерирован: %s\n", outPath)
 	}
+
+	return nil
 }
 
 // isGenerateReset проверяет наличие директивы // generate:reset в группе комментариев.
