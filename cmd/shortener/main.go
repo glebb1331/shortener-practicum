@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
@@ -14,6 +15,28 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 )
+
+var buildVersion string
+var buildDate string
+var buildCommit string
+
+func printBuildInfo() {
+	version := buildVersion
+	if version == "" {
+		version = "N/A"
+	}
+	date := buildDate
+	if date == "" {
+		date = "N/A"
+	}
+	commit := buildCommit
+	if commit == "" {
+		commit = "N/A"
+	}
+	fmt.Printf("Build version: %s\n", version)
+	fmt.Printf("Build date: %s\n", date)
+	fmt.Printf("Build commit: %s\n", commit)
+}
 
 func newRouter(svc *usecase.URLService, auditSvc *audit.AuditService) http.Handler {
 	h := handler.NewHandler(svc, auditSvc)
@@ -35,6 +58,7 @@ func newRouter(svc *usecase.URLService, auditSvc *audit.AuditService) http.Handl
 }
 
 func main() {
+	printBuildInfo()
 
 	cfg, err := config.NewConfig()
 	if err != nil {
