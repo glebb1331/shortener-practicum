@@ -41,7 +41,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := logger.Initialize("info"); err != nil {
+	if err = logger.Initialize("info"); err != nil {
 		log.Fatal("Failed to initialize logger:", err)
 	}
 	defer logger.Log.Sync()
