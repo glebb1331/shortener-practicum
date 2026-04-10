@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 
 	"github.com/glebb1331/shortener-practicum/internal/audit"
@@ -10,6 +12,7 @@ import (
 	"github.com/glebb1331/shortener-practicum/internal/handler"
 	"github.com/glebb1331/shortener-practicum/internal/logger"
 	"github.com/glebb1331/shortener-practicum/internal/middleware"
+	"github.com/glebb1331/shortener-practicum/internal/tlscert"
 	"github.com/glebb1331/shortener-practicum/internal/usecase"
 	"github.com/go-chi/chi/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -90,6 +93,26 @@ func main() {
 	logger.Log.Info(
 		"server started",
 		zap.String("address", cfg.ServerAddress),
+		zap.Bool("https", cfg.EnableHTTPS),
 	)
-	log.Fatal(http.ListenAndServe(cfg.ServerAddress, r))
+
+	if cfg.EnableHTTPS {
+		tlsConfig, err := tlscert.SelfSignedTLSConfig()
+		if err != nil {
+			log.Fatal("Failed to create TLS config:", err)
+		}
+		listener, err := tls.Listen("tcp", cfg.ServerAddress, tlsConfig)
+		if err != nil {
+			log.Fatal("Failed to start TLS listener:", err)
+		}
+		defer listener.Close()
+		log.Fatal(http.Serve(listener, r))
+	} else {
+		listener, err := net.Listen("tcp", cfg.ServerAddress)
+		if err != nil {
+			log.Fatal("Failed to start listener:", err)
+		}
+		defer listener.Close()
+		log.Fatal(http.Serve(listener, r))
+	}
 }

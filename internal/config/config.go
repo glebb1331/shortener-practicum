@@ -14,6 +14,7 @@ type Config struct {
 	DatabaseDSN     string `env:"DATABASE_DSN"`
 	AuditFile       string `env:"AUDIT_FILE"`
 	AuditURL        string `env:"AUDIT_URL"`
+	EnableHTTPS     bool   `env:"ENABLE_HTTPS"`
 }
 
 // NewConfig читает конфигурацию из флагов командной строки и переменных окружения.
@@ -26,6 +27,7 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database DSN")
 	flag.StringVar(&cfg.AuditFile, "audit-file", "", "audit file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit url path")
+	flag.BoolVar(&cfg.EnableHTTPS, "s", false, "enable HTTPS")
 	flag.Parse()
 
 	if err := cleanenv.ReadEnv(cfg); err != nil {
