@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -8,6 +9,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/glebb1331/shortener-practicum/internal/audit"
 	"github.com/glebb1331/shortener-practicum/internal/config"
@@ -87,29 +91,52 @@ func main() {
 	svc := usecase.NewURLService(store, cfg.BaseURL)
 	r := newRouter(svc, auditSvc)
 
+	srv := &http.Server{
+		Handler: r,
+	}
+
+	// Канал для получения сигналов завершения.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
 	logger.Log.Info(
 		"server started",
 		zap.String("address", cfg.ServerAddress),
 		zap.Bool("https", cfg.EnableHTTPS),
 	)
 
+	var listener net.Listener
 	if cfg.EnableHTTPS {
-		tlsConfig, err := tlscert.SelfSignedTLSConfig()
-		if err != nil {
-			log.Fatal("Failed to create TLS config:", err)
+		tlsConfig, tlsErr := tlscert.SelfSignedTLSConfig()
+		if tlsErr != nil {
+			log.Fatal("Failed to create TLS config:", tlsErr)
 		}
-		listener, err := tls.Listen("tcp", cfg.ServerAddress, tlsConfig)
-		if err != nil {
-			log.Fatal("Failed to start TLS listener:", err)
-		}
-		defer listener.Close()
-		log.Fatal(http.Serve(listener, r))
+		listener, err = tls.Listen("tcp", cfg.ServerAddress, tlsConfig)
 	} else {
-		listener, err := net.Listen("tcp", cfg.ServerAddress)
-		if err != nil {
-			log.Fatal("Failed to start listener:", err)
-		}
-		defer listener.Close()
-		log.Fatal(http.Serve(listener, r))
+		listener, err = net.Listen("tcp", cfg.ServerAddress)
 	}
+	if err != nil {
+		log.Fatal("Failed to start listener:", err)
+	}
+
+	// Запускаем сервер в отдельной горутине.
+	go func() {
+		if serveErr := srv.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
+			log.Fatal("Server error:", serveErr)
+		}
+	}()
+
+	// Ожидаем сигнал завершения.
+	sig := <-quit
+	logger.Log.Info("shutting down server", zap.String("signal", sig.String()))
+
+	// Даём серверу время на завершение текущих запросов.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Log.Error("server shutdown error", zap.Error(err))
+	}
+
+	logger.Log.Info("server stopped gracefully")
 }
