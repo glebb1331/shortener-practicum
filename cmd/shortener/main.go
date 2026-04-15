@@ -3,9 +3,11 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/glebb1331/shortener-practicum/internal/audit"
 	"github.com/glebb1331/shortener-practicum/internal/config"
@@ -23,22 +25,17 @@ var buildVersion string
 var buildDate string
 var buildCommit string
 
-func printBuildInfo() {
-	version := buildVersion
-	if version == "" {
-		version = "N/A"
+func valueOrNA(s string) string {
+	if s == "" {
+		return "N/A"
 	}
-	date := buildDate
-	if date == "" {
-		date = "N/A"
-	}
-	commit := buildCommit
-	if commit == "" {
-		commit = "N/A"
-	}
-	fmt.Printf("Build version: %s\n", version)
-	fmt.Printf("Build date: %s\n", date)
-	fmt.Printf("Build commit: %s\n", commit)
+	return s
+}
+
+func printBuildInfo(w io.Writer) {
+	fmt.Fprintf(w, "Build version: %s\n", valueOrNA(buildVersion))
+	fmt.Fprintf(w, "Build date: %s\n", valueOrNA(buildDate))
+	fmt.Fprintf(w, "Build commit: %s\n", valueOrNA(buildCommit))
 }
 
 func newRouter(svc *usecase.URLService, auditSvc *audit.AuditService) http.Handler {
@@ -61,7 +58,7 @@ func newRouter(svc *usecase.URLService, auditSvc *audit.AuditService) http.Handl
 }
 
 func main() {
-	printBuildInfo()
+	printBuildInfo(os.Stdout)
 
 	cfg, err := config.NewConfig()
 	if err != nil {
