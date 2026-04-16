@@ -92,12 +92,15 @@ func main() {
 	r := newRouter(svc, auditSvc)
 
 	srv := &http.Server{
-		Handler: r,
+		Handler:      r,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	// Канал для получения сигналов завершения.
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 
 	logger.Log.Info(
 		"server started",
@@ -109,25 +112,25 @@ func main() {
 	if cfg.EnableHTTPS {
 		tlsConfig, tlsErr := tlscert.SelfSignedTLSConfig()
 		if tlsErr != nil {
-			log.Fatal("Failed to create TLS config:", tlsErr)
+			logger.Log.Fatal("Failed to create TLS config:", zap.Error(tlsErr))
 		}
 		listener, err = tls.Listen("tcp", cfg.ServerAddress, tlsConfig)
 	} else {
 		listener, err = net.Listen("tcp", cfg.ServerAddress)
 	}
 	if err != nil {
-		log.Fatal("Failed to start listener:", err)
+		logger.Log.Fatal("Failed to start listener:", zap.Error(err))
 	}
 
 	// Запускаем сервер в отдельной горутине.
 	go func() {
 		if serveErr := srv.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
-			log.Fatal("Server error:", serveErr)
+			logger.Log.Fatal("Server error:", zap.Error(serveErr))
 		}
 	}()
 
 	// Ожидаем сигнал завершения.
-	sig := <-quit
+	sig := <-sigChan
 	logger.Log.Info("shutting down server", zap.String("signal", sig.String()))
 
 	// Даём серверу время на завершение текущих запросов.
