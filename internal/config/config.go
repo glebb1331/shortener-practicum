@@ -17,6 +17,7 @@ type Config struct {
 	AuditFile       string `env:"AUDIT_FILE"`
 	AuditURL        string `env:"AUDIT_URL"`
 	EnableHTTPS     bool   `env:"ENABLE_HTTPS" json:"enable_https"`
+	TrustedSubnet   string `env:"TRUSTED_SUBNET" json:"trusted_subnet"`
 }
 
 // NewConfig читает конфигурацию из флагов командной строки и переменных окружения.
@@ -33,6 +34,7 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&cfg.AuditFile, "audit-file", "", "audit file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit url path")
 	flag.BoolVar(&cfg.EnableHTTPS, "s", false, "enable HTTPS")
+	flag.StringVar(&cfg.TrustedSubnet, "t", "", "trusted subnet in CIDR notation")
 	flag.Parse()
 
 	if err := cleanenv.ReadEnv(cfg); err != nil {
@@ -89,6 +91,9 @@ func applyJSONConfig(cfg *Config, path string) error {
 	}
 	if !setFlags["s"] && os.Getenv("ENABLE_HTTPS") == "" && fileCfg.EnableHTTPS {
 		cfg.EnableHTTPS = fileCfg.EnableHTTPS
+	}
+	if !setFlags["t"] && os.Getenv("TRUSTED_SUBNET") == "" && fileCfg.TrustedSubnet != "" {
+		cfg.TrustedSubnet = fileCfg.TrustedSubnet
 	}
 
 	return nil

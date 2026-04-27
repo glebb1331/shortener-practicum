@@ -42,8 +42,11 @@ func printBuildInfo(w io.Writer) {
 	fmt.Fprintf(w, "Build commit: %s\n", valueOrNA(buildCommit))
 }
 
-func newRouter(svc *usecase.URLService, auditSvc *audit.AuditService) http.Handler {
+func newRouter(svc *usecase.URLService, auditSvc *audit.AuditService, trustedSubnet string) http.Handler {
 	h := handler.NewHandler(svc, auditSvc)
+	if err := h.SetTrustedSubnet(trustedSubnet); err != nil {
+		logger.Log.Error("Invalid trusted subnet", zap.String("subnet", trustedSubnet), zap.Error(err))
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.WithLogging)
@@ -55,6 +58,7 @@ func newRouter(svc *usecase.URLService, auditSvc *audit.AuditService) http.Handl
 	r.Post("/api/shorten/batch", h.APIShortenBatchHandler)
 	r.Get("/api/user/urls", h.GetUserURLs)
 	r.Delete("/api/user/urls", h.DeleteUserURLs)
+	r.Get("/api/internal/stats", h.InternalStatsHandler)
 	r.Post("/", h.ShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)
 
@@ -89,7 +93,7 @@ func main() {
 	}
 
 	svc := usecase.NewURLService(store, cfg.BaseURL)
-	r := newRouter(svc, auditSvc)
+	r := newRouter(svc, auditSvc, cfg.TrustedSubnet)
 
 	srv := &http.Server{
 		Handler:      r,

@@ -42,6 +42,9 @@ type Storage interface {
 
 	// GetBatchByUserID возвращает записи пользователя по списку id.
 	GetBatchByUserID(ctx context.Context, userID string, ids []string) ([]Record, error)
+
+	// Stats возвращает количество сокращённых URL и количество уникальных пользователей в хранилище.
+	Stats(ctx context.Context) (urls int, users int, err error)
 }
 
 // Sentinel-ошибки хранилища.
