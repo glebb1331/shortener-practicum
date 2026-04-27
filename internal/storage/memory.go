@@ -141,3 +141,17 @@ func (s *MemoryStorage) GetBatchByUserID(ctx context.Context, userID string, ids
 	}
 	return records, nil
 }
+
+// Stats возвращает количество сокращённых URL и количество уникальных пользователей.
+func (s *MemoryStorage) Stats(ctx context.Context) (int, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	users := make(map[string]struct{}, len(s.urls))
+	for _, rec := range s.urls {
+		if rec.UserID != "" {
+			users[rec.UserID] = struct{}{}
+		}
+	}
+	return len(s.urls), len(users), nil
+}

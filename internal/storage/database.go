@@ -155,6 +155,16 @@ func (s *DatabaseStorage) DeleteURLs(ctx context.Context, userID string, ids []s
 	return nil
 }
 
+// Stats возвращает количество сокращённых URL и количество уникальных пользователей.
+func (s *DatabaseStorage) Stats(ctx context.Context) (int, int, error) {
+	query := `SELECT COUNT(*), COUNT(DISTINCT user_id) FROM urls WHERE is_deleted = FALSE`
+	var urls, users int
+	if err := s.db.QueryRowContext(ctx, query).Scan(&urls, &users); err != nil {
+		return 0, 0, fmt.Errorf("failed to get stats: %w", err)
+	}
+	return urls, users, nil
+}
+
 func (s *DatabaseStorage) GetBatchByUserID(ctx context.Context, userID string, ids []string) ([]Record, error) {
 	if len(ids) == 0 {
 		return nil, nil
