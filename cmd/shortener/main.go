@@ -15,14 +15,17 @@ import (
 
 	"github.com/glebb1331/shortener-practicum/internal/audit"
 	"github.com/glebb1331/shortener-practicum/internal/config"
+	"github.com/glebb1331/shortener-practicum/internal/grpcserver"
 	"github.com/glebb1331/shortener-practicum/internal/handler"
 	"github.com/glebb1331/shortener-practicum/internal/logger"
 	"github.com/glebb1331/shortener-practicum/internal/middleware"
 	"github.com/glebb1331/shortener-practicum/internal/tlscert"
 	"github.com/glebb1331/shortener-practicum/internal/usecase"
+	pb "github.com/glebb1331/shortener-practicum/pkg/shortenerpb"
 	"github.com/go-chi/chi/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 var buildVersion string
@@ -133,6 +136,24 @@ func main() {
 		}
 	}()
 
+	// Поднимаем gRPC-сервер, если задан адрес.
+	var grpcSrv *grpc.Server
+	if cfg.GRPCAddress != "" {
+		grpcListener, grpcErr := net.Listen("tcp", cfg.GRPCAddress)
+		if grpcErr != nil {
+			logger.Log.Fatal("Failed to start gRPC listener", zap.Error(grpcErr))
+		}
+		grpcSrv = grpc.NewServer(grpc.UnaryInterceptor(grpcserver.AuthInterceptor()))
+		pb.RegisterShortenerServiceServer(grpcSrv, grpcserver.NewShortenerServer(svc, auditSvc))
+
+		logger.Log.Info("grpc server started", zap.String("address", cfg.GRPCAddress))
+		go func() {
+			if serveErr := grpcSrv.Serve(grpcListener); serveErr != nil {
+				logger.Log.Error("gRPC server error", zap.Error(serveErr))
+			}
+		}()
+	}
+
 	// Ожидаем сигнал завершения.
 	sig := <-sigChan
 	logger.Log.Info("shutting down server", zap.String("signal", sig.String()))
@@ -143,6 +164,19 @@ func main() {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Log.Error("server shutdown error", zap.Error(err))
+	}
+
+	if grpcSrv != nil {
+		stopped := make(chan struct{})
+		go func() {
+			grpcSrv.GracefulStop()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-ctx.Done():
+			grpcSrv.Stop()
+		}
 	}
 
 	logger.Log.Info("server stopped gracefully")

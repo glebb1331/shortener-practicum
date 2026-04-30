@@ -18,6 +18,7 @@ type Config struct {
 	AuditURL        string `env:"AUDIT_URL"`
 	EnableHTTPS     bool   `env:"ENABLE_HTTPS" json:"enable_https"`
 	TrustedSubnet   string `env:"TRUSTED_SUBNET" json:"trusted_subnet"`
+	GRPCAddress     string `env:"GRPC_ADDRESS" json:"grpc_address"`
 }
 
 // NewConfig читает конфигурацию из флагов командной строки и переменных окружения.
@@ -35,6 +36,7 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit url path")
 	flag.BoolVar(&cfg.EnableHTTPS, "s", false, "enable HTTPS")
 	flag.StringVar(&cfg.TrustedSubnet, "t", "", "trusted subnet in CIDR notation")
+	flag.StringVar(&cfg.GRPCAddress, "g", "", "gRPC server address (e.g. :3200); empty disables gRPC")
 	flag.Parse()
 
 	if err := cleanenv.ReadEnv(cfg); err != nil {
@@ -94,6 +96,9 @@ func applyJSONConfig(cfg *Config, path string) error {
 	}
 	if !setFlags["t"] && os.Getenv("TRUSTED_SUBNET") == "" && fileCfg.TrustedSubnet != "" {
 		cfg.TrustedSubnet = fileCfg.TrustedSubnet
+	}
+	if !setFlags["g"] && os.Getenv("GRPC_ADDRESS") == "" && fileCfg.GRPCAddress != "" {
+		cfg.GRPCAddress = fileCfg.GRPCAddress
 	}
 
 	return nil

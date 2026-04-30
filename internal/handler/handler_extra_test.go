@@ -120,14 +120,14 @@ func TestGetUserURLs_WithURLs(t *testing.T) {
 	r.Post("/", h.ShortenHandler)
 	r.Get("/api/user/urls", h.GetUserURLs)
 
-	// First create a short URL
+	// Сначала создаём короткую ссылку.
 	req1 := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://example.com"))
 	req1.Header.Set("Content-Type", "text/plain")
 	rec1 := httptest.NewRecorder()
 	r.ServeHTTP(rec1, req1)
 	require.Equal(t, http.StatusCreated, rec1.Code)
 
-	// Reuse cookie from first request
+	// Переиспользуем cookie из первого запроса.
 	res1 := rec1.Result()
 	defer res1.Body.Close()
 	cookie := res1.Cookies()

@@ -53,6 +53,26 @@ func parseToken(tokenStr string) (*Claims, bool) {
 	return claims, ok
 }
 
+// GenerateUserID создаёт случайный идентификатор пользователя.
+func GenerateUserID() (string, error) {
+	return generateUserID()
+}
+
+// CreateToken подписывает JWT-токен с заданным userID.
+func CreateToken(userID string) (string, error) {
+	return createToken(userID)
+}
+
+// ParseToken разбирает JWT-токен и возвращает userID.
+// Второй результат — флаг валидности токена.
+func ParseToken(tokenStr string) (string, bool) {
+	claims, ok := parseToken(tokenStr)
+	if !ok || claims == nil {
+		return "", false
+	}
+	return claims.UserID, true
+}
+
 // WithAuth — middleware аутентификации на основе JWT-куки.
 // Если кука отсутствует, создаёт нового пользователя и устанавливает куку.
 // Передаёт userID в заголовке X-User-ID.
