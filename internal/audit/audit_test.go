@@ -45,7 +45,7 @@ func TestAuditService_MultipleObservers(t *testing.T) {
 
 func TestAuditService_NoObservers(t *testing.T) {
 	svc := NewAuditService()
-	// should not panic
+	// не должно паниковать
 	svc.Notify(AuditEvent{Action: "test", URL: "https://example.com"})
 }
 
@@ -62,7 +62,7 @@ func TestFileObserver_Notify(t *testing.T) {
 	require.NoError(t, err)
 
 	var event AuditEvent
-	err = json.Unmarshal(data[:len(data)-1], &event) // strip trailing newline
+	err = json.Unmarshal(data[:len(data)-1], &event) // отбрасываем завершающий перевод строки
 	require.NoError(t, err)
 	assert.Equal(t, "shorten", event.Action)
 	assert.Equal(t, "https://example.com", event.URL)
@@ -70,7 +70,7 @@ func TestFileObserver_Notify(t *testing.T) {
 
 func TestFileObserver_InvalidPath(t *testing.T) {
 	obs := NewFileObserver("/nonexistent/path/audit.jsonl")
-	// should not panic
+	// не должно паниковать
 	obs.Notify(AuditEvent{Action: "test", URL: "https://example.com"})
 }
 
@@ -91,6 +91,6 @@ func TestHTTPObserver_Notify(t *testing.T) {
 
 func TestHTTPObserver_InvalidURL(t *testing.T) {
 	obs := NewHTTPObserver("http://127.0.0.1:0")
-	// should not panic on connection refused
+	// не должно паниковать при отказе соединения
 	obs.Notify(AuditEvent{Action: "test", URL: "https://example.com"})
 }

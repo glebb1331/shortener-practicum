@@ -151,6 +151,11 @@ func (s *URLService) BaseURL() string {
 	return s.baseURL
 }
 
+// Stats возвращает количество сокращённых URL и количество уникальных пользователей.
+func (s *URLService) Stats(ctx context.Context) (int, int, error) {
+	return s.store.Stats(ctx)
+}
+
 // DeleteURLs асинхронно помечает ссылки пользователя как удалённые.
 func (s *URLService) DeleteURLs(ctx context.Context, userID string, ids []string) error {
 	if len(ids) == 0 {

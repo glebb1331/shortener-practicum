@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// SelfSignedTLSConfig generates a self-signed TLS certificate and returns a tls.Config.
+// SelfSignedTLSConfig генерирует самоподписанный TLS-сертификат и возвращает tls.Config.
 func SelfSignedTLSConfig() (*tls.Config, error) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {

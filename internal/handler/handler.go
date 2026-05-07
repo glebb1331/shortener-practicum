@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -18,8 +19,9 @@ import (
 
 // Handler содержит HTTP-обработчики сервиса сокращения ссылок.
 type Handler struct {
-	service  *usecase.URLService
-	auditSvc *audit.AuditService
+	service       *usecase.URLService
+	auditSvc      *audit.AuditService
+	trustedSubnet *net.IPNet
 }
 
 // ShortenRequest — тело запроса для POST /api/shorten.
@@ -44,6 +46,27 @@ func NewHandler(svc *usecase.URLService, auditSvc *audit.AuditService) *Handler 
 		service:  svc,
 		auditSvc: auditSvc,
 	}
+}
+
+// SetTrustedSubnet устанавливает доверенную подсеть для эндпоинта /api/internal/stats.
+// Пустая строка отключает доступ к эндпоинту.
+func (h *Handler) SetTrustedSubnet(cidr string) error {
+	if cidr == "" {
+		h.trustedSubnet = nil
+		return nil
+	}
+	_, subnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return err
+	}
+	h.trustedSubnet = subnet
+	return nil
+}
+
+// TrustedSubnet возвращает доверенную подсеть, ранее заданную через SetTrustedSubnet.
+// Возвращает nil, если подсеть не задана.
+func (h *Handler) TrustedSubnet() *net.IPNet {
+	return h.trustedSubnet
 }
 
 // ShortenHandler обрабатывает POST / — принимает plain-text URL, возвращает короткую ссылку.
@@ -352,4 +375,29 @@ func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// StatsResponse — тело ответа для GET /api/internal/stats.
+type StatsResponse struct {
+	URLs  int `json:"urls"`
+	Users int `json:"users"`
+}
+
+// InternalStatsHandler обрабатывает GET /api/internal/stats — возвращает статистику сервиса.
+// Доступ разрешён только клиентам, чей IP-адрес из заголовка X-Real-IP входит в доверенную подсеть.
+// Проверка подсети вынесена в middleware.WithTrustedSubnet и должна выполняться до этого хендлера.
+func (h *Handler) InternalStatsHandler(w http.ResponseWriter, r *http.Request) {
+	urls, users, err := h.service.Stats(r.Context())
+	if err != nil {
+		logger.Log.Error("Failed to get stats",
+			zap.Error(err),
+			zap.String("method", r.Method),
+		)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(StatsResponse{URLs: urls, Users: users})
 }

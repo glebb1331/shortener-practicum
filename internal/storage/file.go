@@ -200,6 +200,20 @@ func (s *FileStorage) DeleteURLs(ctx context.Context, userID string, ids []strin
 	return nil
 }
 
+// Stats возвращает количество сокращённых URL и количество уникальных пользователей.
+func (s *FileStorage) Stats(ctx context.Context) (int, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	users := make(map[string]struct{}, len(s.records))
+	for _, r := range s.records {
+		if r.UserID != "" {
+			users[r.UserID] = struct{}{}
+		}
+	}
+	return len(s.records), len(users), nil
+}
+
 // GetBatchByUserID возвращает записи пользователя по списку id.
 func (s *FileStorage) GetBatchByUserID(ctx context.Context, userID string, ids []string) ([]Record, error) {
 	s.mu.RLock()

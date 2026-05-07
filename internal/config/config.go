@@ -17,6 +17,8 @@ type Config struct {
 	AuditFile       string `env:"AUDIT_FILE"`
 	AuditURL        string `env:"AUDIT_URL"`
 	EnableHTTPS     bool   `env:"ENABLE_HTTPS" json:"enable_https"`
+	TrustedSubnet   string `env:"TRUSTED_SUBNET" json:"trusted_subnet"`
+	GRPCAddress     string `env:"GRPC_ADDRESS" json:"grpc_address"`
 }
 
 // NewConfig читает конфигурацию из флагов командной строки и переменных окружения.
@@ -33,6 +35,8 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&cfg.AuditFile, "audit-file", "", "audit file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit url path")
 	flag.BoolVar(&cfg.EnableHTTPS, "s", false, "enable HTTPS")
+	flag.StringVar(&cfg.TrustedSubnet, "t", "", "trusted subnet in CIDR notation")
+	flag.StringVar(&cfg.GRPCAddress, "g", "", "gRPC server address (e.g. :3200); empty disables gRPC")
 	flag.Parse()
 
 	if err := cleanenv.ReadEnv(cfg); err != nil {
@@ -41,7 +45,9 @@ func NewConfig() (*Config, error) {
 
 	// Определяем путь к файлу конфигурации: флаг имеет приоритет над переменной окружения.
 	if configFile == "" {
-		configFile = os.Getenv("CONFIG")
+		if v, ok := os.LookupEnv("CONFIG"); ok {
+			configFile = v
+		}
 	}
 
 	// Загружаем JSON-конфигурацию, если указан файл.
@@ -74,21 +80,35 @@ func applyJSONConfig(cfg *Config, path string) error {
 		setFlags[f.Name] = true
 	})
 
+	// envIsSet возвращает true, если переменная окружения объявлена (даже если пустая).
+	// Используем LookupEnv, чтобы отличать пустую переменную от необъявленной:
+	// объявленная пустая переменная — это явно заданное пользователем значение.
+	envIsSet := func(name string) bool {
+		_, ok := os.LookupEnv(name)
+		return ok
+	}
+
 	// Применяем значения из JSON только если поле не задано флагом и не задано переменной окружения.
-	if !setFlags["a"] && os.Getenv("SERVER_ADDRESS") == "" && fileCfg.ServerAddress != "" {
+	if !setFlags["a"] && !envIsSet("SERVER_ADDRESS") && fileCfg.ServerAddress != "" {
 		cfg.ServerAddress = fileCfg.ServerAddress
 	}
-	if !setFlags["b"] && os.Getenv("BASE_URL") == "" && fileCfg.BaseURL != "" {
+	if !setFlags["b"] && !envIsSet("BASE_URL") && fileCfg.BaseURL != "" {
 		cfg.BaseURL = fileCfg.BaseURL
 	}
-	if !setFlags["f"] && os.Getenv("FILE_STORAGE_PATH") == "" && fileCfg.FileStoragePath != "" {
+	if !setFlags["f"] && !envIsSet("FILE_STORAGE_PATH") && fileCfg.FileStoragePath != "" {
 		cfg.FileStoragePath = fileCfg.FileStoragePath
 	}
-	if !setFlags["d"] && os.Getenv("DATABASE_DSN") == "" && fileCfg.DatabaseDSN != "" {
+	if !setFlags["d"] && !envIsSet("DATABASE_DSN") && fileCfg.DatabaseDSN != "" {
 		cfg.DatabaseDSN = fileCfg.DatabaseDSN
 	}
-	if !setFlags["s"] && os.Getenv("ENABLE_HTTPS") == "" && fileCfg.EnableHTTPS {
+	if !setFlags["s"] && !envIsSet("ENABLE_HTTPS") && fileCfg.EnableHTTPS {
 		cfg.EnableHTTPS = fileCfg.EnableHTTPS
+	}
+	if !setFlags["t"] && !envIsSet("TRUSTED_SUBNET") && fileCfg.TrustedSubnet != "" {
+		cfg.TrustedSubnet = fileCfg.TrustedSubnet
+	}
+	if !setFlags["g"] && !envIsSet("GRPC_ADDRESS") && fileCfg.GRPCAddress != "" {
+		cfg.GRPCAddress = fileCfg.GRPCAddress
 	}
 
 	return nil
