@@ -76,7 +76,9 @@ func TestWithAuth_NoCookie(t *testing.T) {
 	assert.NotEmpty(t, capturedUserID, "X-User-ID should be set for new user")
 
 	// В ответе должна быть установлена cookie с токеном.
-	cookies := rec.Result().Cookies()
+	resp := rec.Result()
+	defer resp.Body.Close()
+	cookies := resp.Cookies()
 	var found bool
 	for _, c := range cookies {
 		if c.Name == cookieName {
