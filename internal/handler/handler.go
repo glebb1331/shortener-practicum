@@ -63,6 +63,12 @@ func (h *Handler) SetTrustedSubnet(cidr string) error {
 	return nil
 }
 
+// TrustedSubnet возвращает доверенную подсеть, ранее заданную через SetTrustedSubnet.
+// Возвращает nil, если подсеть не задана.
+func (h *Handler) TrustedSubnet() *net.IPNet {
+	return h.trustedSubnet
+}
+
 // ShortenHandler обрабатывает POST / — принимает plain-text URL, возвращает короткую ссылку.
 func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -379,18 +385,8 @@ type StatsResponse struct {
 
 // InternalStatsHandler обрабатывает GET /api/internal/stats — возвращает статистику сервиса.
 // Доступ разрешён только клиентам, чей IP-адрес из заголовка X-Real-IP входит в доверенную подсеть.
+// Проверка подсети вынесена в middleware.WithTrustedSubnet и должна выполняться до этого хендлера.
 func (h *Handler) InternalStatsHandler(w http.ResponseWriter, r *http.Request) {
-	if h.trustedSubnet == nil {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		return
-	}
-
-	clientIP := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP")))
-	if clientIP == nil || !h.trustedSubnet.Contains(clientIP) {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		return
-	}
-
 	urls, users, err := h.service.Stats(r.Context())
 	if err != nil {
 		logger.Log.Error("Failed to get stats",

@@ -9,12 +9,13 @@ import (
 
 func TestProtoMessages_RoundTrip(t *testing.T) {
 	for _, msg := range []proto.Message{
-		&URLShortenRequest{Url: "https://example.com"},
-		&URLShortenResponse{Result: "https://short.example/abc"},
-		&URLExpandRequest{Id: "abc"},
-		&URLExpandResponse{Result: "https://example.com"},
-		&URLData{ShortUrl: "s", OriginalUrl: "o"},
-		&UserURLsResponse{Url: []*URLData{{ShortUrl: "s", OriginalUrl: "o"}}},
+		URLShortenRequest_builder{Url: "https://example.com"}.Build(),
+		URLShortenResponse_builder{Result: "https://short.example/abc"}.Build(),
+		URLExpandRequest_builder{Id: "abc"}.Build(),
+		URLExpandResponse_builder{Result: "https://example.com"}.Build(),
+		URLData_builder{ShortUrl: "s", OriginalUrl: "o"}.Build(),
+		UserURLsResponse_builder{Url: []*URLData{URLData_builder{ShortUrl: "s", OriginalUrl: "o"}.Build()}}.Build(),
+		ListUserURLsRequest_builder{}.Build(),
 	} {
 		data, err := proto.Marshal(msg)
 		assert.NoError(t, err)
@@ -27,28 +28,28 @@ func TestProtoMessages_RoundTrip(t *testing.T) {
 }
 
 func TestProtoMessages_Getters(t *testing.T) {
-	a := &URLShortenRequest{Url: "u"}
+	a := URLShortenRequest_builder{Url: "u"}.Build()
 	assert.Equal(t, "u", a.GetUrl())
 	assert.NotEmpty(t, a.String())
 
-	b := &URLShortenResponse{Result: "r"}
+	b := URLShortenResponse_builder{Result: "r"}.Build()
 	assert.Equal(t, "r", b.GetResult())
 	assert.NotEmpty(t, b.String())
 
-	c := &URLExpandRequest{Id: "i"}
+	c := URLExpandRequest_builder{Id: "i"}.Build()
 	assert.Equal(t, "i", c.GetId())
 	assert.NotEmpty(t, c.String())
 
-	d := &URLExpandResponse{Result: "r"}
+	d := URLExpandResponse_builder{Result: "r"}.Build()
 	assert.Equal(t, "r", d.GetResult())
 	assert.NotEmpty(t, d.String())
 
-	e := &URLData{ShortUrl: "s", OriginalUrl: "o"}
+	e := URLData_builder{ShortUrl: "s", OriginalUrl: "o"}.Build()
 	assert.Equal(t, "s", e.GetShortUrl())
 	assert.Equal(t, "o", e.GetOriginalUrl())
 	assert.NotEmpty(t, e.String())
 
-	f := &UserURLsResponse{Url: []*URLData{e}}
+	f := UserURLsResponse_builder{Url: []*URLData{e}}.Build()
 	assert.Len(t, f.GetUrl(), 1)
 	assert.NotEmpty(t, f.String())
 }
@@ -71,28 +72,52 @@ func TestProtoMessages_NilGetters(t *testing.T) {
 	assert.Nil(t, f.GetUrl())
 }
 
+func TestProtoMessages_Setters(t *testing.T) {
+	a := &URLShortenRequest{}
+	a.SetUrl("u")
+	assert.Equal(t, "u", a.GetUrl())
+
+	b := &URLShortenResponse{}
+	b.SetResult("r")
+	assert.Equal(t, "r", b.GetResult())
+
+	c := &URLExpandRequest{}
+	c.SetId("i")
+	assert.Equal(t, "i", c.GetId())
+
+	d := &URLExpandResponse{}
+	d.SetResult("r")
+	assert.Equal(t, "r", d.GetResult())
+
+	e := &URLData{}
+	e.SetShortUrl("s")
+	e.SetOriginalUrl("o")
+	assert.Equal(t, "s", e.GetShortUrl())
+	assert.Equal(t, "o", e.GetOriginalUrl())
+}
+
 func TestProtoMessages_Reset(t *testing.T) {
-	a := &URLShortenRequest{Url: "u"}
+	a := URLShortenRequest_builder{Url: "u"}.Build()
 	a.Reset()
 	assert.Equal(t, "", a.GetUrl())
 
-	b := &URLShortenResponse{Result: "r"}
+	b := URLShortenResponse_builder{Result: "r"}.Build()
 	b.Reset()
 	assert.Equal(t, "", b.GetResult())
 
-	c := &URLExpandRequest{Id: "i"}
+	c := URLExpandRequest_builder{Id: "i"}.Build()
 	c.Reset()
 	assert.Equal(t, "", c.GetId())
 
-	d := &URLExpandResponse{Result: "r"}
+	d := URLExpandResponse_builder{Result: "r"}.Build()
 	d.Reset()
 	assert.Equal(t, "", d.GetResult())
 
-	e := &URLData{ShortUrl: "s"}
+	e := URLData_builder{ShortUrl: "s"}.Build()
 	e.Reset()
 	assert.Equal(t, "", e.GetShortUrl())
 
-	f := &UserURLsResponse{Url: []*URLData{{}}}
+	f := UserURLsResponse_builder{Url: []*URLData{URLData_builder{}.Build()}}.Build()
 	f.Reset()
 	assert.Nil(t, f.GetUrl())
 }

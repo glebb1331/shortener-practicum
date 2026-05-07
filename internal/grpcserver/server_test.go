@@ -3,6 +3,7 @@ package grpcserver
 import (
 	"context"
 	"net"
+	"os"
 	"strings"
 	"testing"
 
@@ -20,11 +21,11 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-func init() {
+func TestMain(m *testing.M) {
 	_ = logger.Initialize("error")
+	os.Exit(m.Run())
 }
 
 func startTestServer(t *testing.T) (pb.ShortenerServiceClient, func()) {
@@ -64,7 +65,7 @@ func TestShortenURL_NewUserGetsToken(t *testing.T) {
 	var headers metadata.MD
 	resp, err := client.ShortenURL(
 		context.Background(),
-		&pb.URLShortenRequest{Url: "https://example.com"},
+		pb.URLShortenRequest_builder{Url: "https://example.com"}.Build(),
 		grpc.Header(&headers),
 	)
 	require.NoError(t, err)
@@ -80,7 +81,7 @@ func TestShortenURL_EmptyURLReturnsInvalidArgument(t *testing.T) {
 	client, stop := startTestServer(t)
 	defer stop()
 
-	_, err := client.ShortenURL(context.Background(), &pb.URLShortenRequest{Url: "  "})
+	_, err := client.ShortenURL(context.Background(), pb.URLShortenRequest_builder{Url: "  "}.Build())
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -93,14 +94,14 @@ func TestExpandURL_RoundTrip(t *testing.T) {
 	var headers metadata.MD
 	shortResp, err := client.ShortenURL(
 		context.Background(),
-		&pb.URLShortenRequest{Url: "https://example.org"},
+		pb.URLShortenRequest_builder{Url: "https://example.org"}.Build(),
 		grpc.Header(&headers),
 	)
 	require.NoError(t, err)
 
 	id := shortResp.GetResult()[len("http://localhost:8080/"):]
 
-	expandResp, err := client.ExpandURL(context.Background(), &pb.URLExpandRequest{Id: id})
+	expandResp, err := client.ExpandURL(context.Background(), pb.URLExpandRequest_builder{Id: id}.Build())
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.org", expandResp.GetResult())
 }
@@ -109,7 +110,7 @@ func TestExpandURL_NotFound(t *testing.T) {
 	client, stop := startTestServer(t)
 	defer stop()
 
-	_, err := client.ExpandURL(context.Background(), &pb.URLExpandRequest{Id: "missingid"})
+	_, err := client.ExpandURL(context.Background(), pb.URLExpandRequest_builder{Id: "missingid"}.Build())
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.NotFound, st.Code())
@@ -126,12 +127,12 @@ func TestListUserURLs_ReturnsUserURLs(t *testing.T) {
 
 	ctx := metadata.AppendToOutgoingContext(context.Background(), authMetadataKey, token)
 
-	_, err = client.ShortenURL(ctx, &pb.URLShortenRequest{Url: "https://one.example"})
+	_, err = client.ShortenURL(ctx, pb.URLShortenRequest_builder{Url: "https://one.example"}.Build())
 	require.NoError(t, err)
-	_, err = client.ShortenURL(ctx, &pb.URLShortenRequest{Url: "https://two.example"})
+	_, err = client.ShortenURL(ctx, pb.URLShortenRequest_builder{Url: "https://two.example"}.Build())
 	require.NoError(t, err)
 
-	listResp, err := client.ListUserURLs(ctx, &emptypb.Empty{})
+	listResp, err := client.ListUserURLs(ctx, pb.ListUserURLsRequest_builder{}.Build())
 	require.NoError(t, err)
 	require.Len(t, listResp.GetUrl(), 2)
 
@@ -154,10 +155,10 @@ func TestShortenURL_ExistingURLReturnsAlreadyExists(t *testing.T) {
 
 	ctx := metadata.AppendToOutgoingContext(context.Background(), authMetadataKey, token)
 
-	_, err = client.ShortenURL(ctx, &pb.URLShortenRequest{Url: "https://duplicate.example"})
+	_, err = client.ShortenURL(ctx, pb.URLShortenRequest_builder{Url: "https://duplicate.example"}.Build())
 	require.NoError(t, err)
 
-	_, err = client.ShortenURL(ctx, &pb.URLShortenRequest{Url: "https://duplicate.example"})
+	_, err = client.ShortenURL(ctx, pb.URLShortenRequest_builder{Url: "https://duplicate.example"}.Build())
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.AlreadyExists, st.Code())
@@ -167,7 +168,7 @@ func TestExpandURL_EmptyID(t *testing.T) {
 	client, stop := startTestServer(t)
 	defer stop()
 
-	_, err := client.ExpandURL(context.Background(), &pb.URLExpandRequest{Id: ""})
+	_, err := client.ExpandURL(context.Background(), pb.URLExpandRequest_builder{Id: ""}.Build())
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -183,7 +184,7 @@ func TestAuthInterceptor_BearerPrefixAccepted(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := metadata.AppendToOutgoingContext(context.Background(), authMetadataKey, "Bearer "+token)
-	_, err = client.ShortenURL(ctx, &pb.URLShortenRequest{Url: "https://bearer.example"})
+	_, err = client.ShortenURL(ctx, pb.URLShortenRequest_builder{Url: "https://bearer.example"}.Build())
 	require.NoError(t, err)
 }
 
@@ -192,7 +193,7 @@ func TestAuthInterceptor_InvalidTokenRejected(t *testing.T) {
 	defer stop()
 
 	ctx := metadata.AppendToOutgoingContext(context.Background(), authMetadataKey, "garbage")
-	_, err := client.ShortenURL(ctx, &pb.URLShortenRequest{Url: "https://x.example"})
+	_, err := client.ShortenURL(ctx, pb.URLShortenRequest_builder{Url: "https://x.example"}.Build())
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.Unauthenticated, st.Code())

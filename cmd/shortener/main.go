@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -45,10 +46,10 @@ func printBuildInfo(w io.Writer) {
 	fmt.Fprintf(w, "Build commit: %s\n", valueOrNA(buildCommit))
 }
 
-func newRouter(svc *usecase.URLService, auditSvc *audit.AuditService, trustedSubnet string) http.Handler {
+func newRouter(svc *usecase.URLService, auditSvc *audit.AuditService, trustedSubnet string) (http.Handler, error) {
 	h := handler.NewHandler(svc, auditSvc)
 	if err := h.SetTrustedSubnet(trustedSubnet); err != nil {
-		logger.Log.Error("Invalid trusted subnet", zap.String("subnet", trustedSubnet), zap.Error(err))
+		return nil, fmt.Errorf("invalid trusted subnet %q: %w", trustedSubnet, err)
 	}
 
 	r := chi.NewRouter()
@@ -61,11 +62,14 @@ func newRouter(svc *usecase.URLService, auditSvc *audit.AuditService, trustedSub
 	r.Post("/api/shorten/batch", h.APIShortenBatchHandler)
 	r.Get("/api/user/urls", h.GetUserURLs)
 	r.Delete("/api/user/urls", h.DeleteUserURLs)
-	r.Get("/api/internal/stats", h.InternalStatsHandler)
+	// Эндпоинт /api/internal/stats подключаем только при заданной доверенной подсети.
+	if subnet := h.TrustedSubnet(); subnet != nil {
+		r.With(middleware.WithTrustedSubnet(subnet)).Get("/api/internal/stats", h.InternalStatsHandler)
+	}
 	r.Post("/", h.ShortenHandler)
 	r.Get("/{id}", h.RedirectHandler)
 
-	return r
+	return r, nil
 }
 
 func main() {
@@ -96,7 +100,10 @@ func main() {
 	}
 
 	svc := usecase.NewURLService(store, cfg.BaseURL)
-	r := newRouter(svc, auditSvc, cfg.TrustedSubnet)
+	r, err := newRouter(svc, auditSvc, cfg.TrustedSubnet)
+	if err != nil {
+		logger.Log.Fatal("failed to build router", zap.Error(err))
+	}
 
 	srv := &http.Server{
 		Handler:      r,
@@ -129,10 +136,15 @@ func main() {
 		logger.Log.Fatal("Failed to start listener:", zap.Error(err))
 	}
 
-	// Запускаем сервер в отдельной горутине.
+	// Группа горутин серверов: дожидаемся их завершения перед выходом из main,
+	// чтобы не оставить активные операции (логирование, обработка запросов) после возврата.
+	var wg sync.WaitGroup
+
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if serveErr := srv.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
-			logger.Log.Fatal("Server error:", zap.Error(serveErr))
+			logger.Log.Error("HTTP server error", zap.Error(serveErr))
 		}
 	}()
 
@@ -147,7 +159,9 @@ func main() {
 		pb.RegisterShortenerServiceServer(grpcSrv, grpcserver.NewShortenerServer(svc, auditSvc))
 
 		logger.Log.Info("grpc server started", zap.String("address", cfg.GRPCAddress))
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			if serveErr := grpcSrv.Serve(grpcListener); serveErr != nil {
 				logger.Log.Error("gRPC server error", zap.Error(serveErr))
 			}
@@ -178,6 +192,9 @@ func main() {
 			grpcSrv.Stop()
 		}
 	}
+
+	// Дожидаемся, пока все Serve-горутины полностью завершатся.
+	wg.Wait()
 
 	logger.Log.Info("server stopped gracefully")
 }

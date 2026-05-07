@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -16,8 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func init() {
+func TestMain(m *testing.M) {
 	_ = logger.Initialize("error")
+	os.Exit(m.Run())
 }
 
 func TestValueOrNA(t *testing.T) {
@@ -37,7 +39,8 @@ func TestPrintBuildInfo(t *testing.T) {
 func TestNewRouter_RoutesRespond(t *testing.T) {
 	store := storage.NewMemoryStorage()
 	svc := usecase.NewURLService(store, "http://localhost:8080")
-	r := newRouter(svc, audit.NewAuditService(), "")
+	r, err := newRouter(svc, audit.NewAuditService(), "")
+	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 	rec := httptest.NewRecorder()
@@ -55,9 +58,31 @@ func TestNewRouter_BadTrustedSubnet(t *testing.T) {
 	store := storage.NewMemoryStorage()
 	svc := usecase.NewURLService(store, "http://localhost:8080")
 
-	// Невалидный CIDR не должен вызывать панику — только ошибка логируется.
-	r := newRouter(svc, audit.NewAuditService(), "not-a-cidr")
-	require.NotNil(t, r)
+	// Невалидный CIDR теперь приводит к ошибке инициализации (fail early),
+	// а не к молчаливому переходу к дефолтным значениям.
+	_, err := newRouter(svc, audit.NewAuditService(), "not-a-cidr")
+	require.Error(t, err)
+}
+
+func TestNewRouter_StatsRouteOnlyWhenSubnetSet(t *testing.T) {
+	store := storage.NewMemoryStorage()
+	svc := usecase.NewURLService(store, "http://localhost:8080")
+
+	rNoSubnet, err := newRouter(svc, audit.NewAuditService(), "")
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodGet, "/api/internal/stats", nil)
+	rec := httptest.NewRecorder()
+	rNoSubnet.ServeHTTP(rec, req)
+	// Без подсети маршрут не зарегистрирован — chi отдаёт 404.
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+
+	rWithSubnet, err := newRouter(svc, audit.NewAuditService(), "10.0.0.0/8")
+	require.NoError(t, err)
+	req = httptest.NewRequest(http.MethodGet, "/api/internal/stats", nil)
+	req.Header.Set("X-Real-IP", "192.168.1.1")
+	rec = httptest.NewRecorder()
+	rWithSubnet.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
 func TestInitStorage_Memory(t *testing.T) {

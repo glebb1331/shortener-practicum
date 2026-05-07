@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // ShortenerServer реализует gRPC-сервис ShortenerService.
@@ -53,7 +52,7 @@ func (s *ShortenerServer) ShortenURL(ctx context.Context, req *pb.URLShortenRequ
 	}
 
 	s.auditSvc.Notify(audit.AuditEvent{Action: "shorten", UserID: userID, URL: req.GetUrl()})
-	return &pb.URLShortenResponse{Result: result}, nil
+	return pb.URLShortenResponse_builder{Result: result}.Build(), nil
 }
 
 // ExpandURL возвращает оригинальный URL по короткому идентификатору.
@@ -78,11 +77,11 @@ func (s *ShortenerServer) ExpandURL(ctx context.Context, req *pb.URLExpandReques
 	if userID, ok := UserIDFromContext(ctx); ok {
 		s.auditSvc.Notify(audit.AuditEvent{Action: "follow", UserID: userID, URL: originalURL})
 	}
-	return &pb.URLExpandResponse{Result: originalURL}, nil
+	return pb.URLExpandResponse_builder{Result: originalURL}.Build(), nil
 }
 
 // ListUserURLs возвращает все ссылки текущего пользователя.
-func (s *ShortenerServer) ListUserURLs(ctx context.Context, _ *emptypb.Empty) (*pb.UserURLsResponse, error) {
+func (s *ShortenerServer) ListUserURLs(ctx context.Context, _ *pb.ListUserURLsRequest) (*pb.UserURLsResponse, error) {
 	userID, ok := UserIDFromContext(ctx)
 	if !ok || userID == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing user id")
@@ -94,17 +93,17 @@ func (s *ShortenerServer) ListUserURLs(ctx context.Context, _ *emptypb.Empty) (*
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	resp := &pb.UserURLsResponse{Url: make([]*pb.URLData, 0, len(records))}
+	urls := make([]*pb.URLData, 0, len(records))
 	for _, rec := range records {
 		shortURL, err := url.JoinPath(s.service.BaseURL(), rec.ID)
 		if err != nil {
 			logger.Log.Error("grpc list user urls join failed", zap.Error(err))
 			continue
 		}
-		resp.Url = append(resp.Url, &pb.URLData{
+		urls = append(urls, pb.URLData_builder{
 			ShortUrl:    shortURL,
 			OriginalUrl: rec.OriginalURL,
-		})
+		}.Build())
 	}
-	return resp, nil
+	return pb.UserURLsResponse_builder{Url: urls}.Build(), nil
 }

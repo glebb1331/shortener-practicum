@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package shortener;
 
-import "google/protobuf/empty.proto";
-
 option go_package = "github.com/glebb1331/shortener-practicum/pkg/shortenerpb";
 
 // ShortenerService описывает gRPC-API сервиса сокращения ссылок.
@@ -13,7 +11,7 @@ service ShortenerService {
   // ExpandURL возвращает оригинальный URL по идентификатору короткой ссылки.
   rpc ExpandURL (URLExpandRequest) returns (URLExpandResponse);
   // ListUserURLs возвращает все ссылки текущего пользователя.
-  rpc ListUserURLs (google.protobuf.Empty) returns (UserURLsResponse);
+  rpc ListUserURLs (ListUserURLsRequest) returns (UserURLsResponse);
 }
 
 message URLShortenRequest {
@@ -30,6 +28,13 @@ message URLExpandRequest {
 
 message URLExpandResponse {
   string result = 1;
+}
+
+// ListUserURLsRequest — запрос списка ссылок текущего пользователя.
+// Сейчас не содержит полей, но определён как самостоятельный тип, чтобы
+// расширения сигнатуры в будущем не ломали обратную совместимость
+// (вместо google.protobuf.Empty).
+message ListUserURLsRequest {
 }
 
 message UserURLsResponse {
